@@ -21,8 +21,11 @@ function showFailureNotification(flowName: string) {
   if ('Notification' in window && Notification.permission === 'granted')
     new Notification('Test Failed', { body: `${flowName} failed.` });
 }
+function parseUtc(d: string): Date {
+  return (!d.includes('T') && !d.endsWith('Z')) ? new Date(d.replace(' ', 'T') + 'Z') : new Date(d);
+}
 function timeAgo(dateStr: string) {
-  const diff = Date.now() - new Date(dateStr).getTime();
+  const diff = Date.now() - parseUtc(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
@@ -65,12 +68,13 @@ export default function ProjectDetailPage() {
   const [triggering, setTriggering]         = useState<number | null>(null);
   const [cancelling, setCancelling]         = useState<number | null>(null);
   const [runningAll, setRunningAll]         = useState(false);
+  const [stoppingAll, setStoppingAll]       = useState(false);
   const [importing, setImporting]           = useState(false);
   const [cloning, setCloning]               = useState<number | null>(null);
   const [deleting, setDeleting]             = useState<number | null>(null);
   const [deletingProject, setDeletingProject] = useState(false);
   const [editingProject, setEditingProject] = useState(false);
-  const [projectForm, setProjectForm]       = useState({ name: '', base_url: '', description: '', schedule: '' });
+  const [projectForm, setProjectForm]       = useState({ name: '', base_url: '', description: '', schedule: '', headless: 0, timeout_ms: 60000, webhook_url: '', env_vars: '{}' });
   const [savingProject, setSavingProject]   = useState(false);
   const [editingFlow, setEditingFlow]       = useState<number | null>(null);
   const [editFlowName, setEditFlowName]     = useState('');
@@ -115,7 +119,7 @@ export default function ProjectDetailPage() {
     if (!id) return;
     projectsApi.get(parseInt(id)).then(p => {
       setProject(p);
-      setProjectForm({ name: p.name, base_url: p.base_url, description: p.description, schedule: p.schedule || '' });
+      setProjectForm({ name: p.name, base_url: p.base_url, description: p.description, schedule: p.schedule || '', headless: p.headless || 0, timeout_ms: p.timeout_ms || 60000, webhook_url: p.webhook_url || '', env_vars: p.env_vars || '{}' });
     });
     loadFlows();
     requestNotificationPermission();
@@ -171,9 +175,19 @@ export default function ProjectDetailPage() {
     setRunningAll(true);
     try {
       const result = await runsApi.runAll(parseInt(id));
-      notify(`Started ${result.run_ids.length} runs.`);
+      notify(`Queued ${result.run_ids.length} flows — running one by one.`);
       setTimeout(loadFlows, 800);
     } finally { setRunningAll(false); }
+  };
+
+  const handleStopAll = async () => {
+    if (!id) return;
+    setStoppingAll(true);
+    try {
+      await runsApi.stopAll(parseInt(id));
+      notify('Stopped all runs.');
+      setTimeout(loadFlows, 500);
+    } finally { setStoppingAll(false); }
   };
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -295,6 +309,40 @@ export default function ProjectDetailPage() {
     } finally { setClearingFlows(false); }
   };
 
+  const handleReorder = async (flowId: number, direction: 'up' | 'down') => {
+    const idx = flows.findIndex(f => f.id === flowId);
+    if (idx === -1) return;
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= flows.length) return;
+    const updated = [...flows];
+    [updated[idx], updated[swapIdx]] = [updated[swapIdx], updated[idx]];
+    const reorderPayload = updated.map((f, i) => ({ id: f.id, order_index: i }));
+    await flowsApi.reorder(parseInt(id!), reorderPayload);
+    loadFlows();
+  };
+
+  const handleExportCSV = () => {
+    const rows = [['Flow', 'Run ID', 'Status', 'Duration (s)', 'Started At', 'Error']];
+    for (const flow of flows) {
+      for (const run of flow.runs) {
+        rows.push([
+          flow.name,
+          String(run.id),
+          run.status,
+          run.duration_ms ? (run.duration_ms / 1000).toFixed(2) : '',
+          run.started_at || '',
+          run.error_message || '',
+        ]);
+      }
+    }
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${project?.name || 'project'}-runs.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (!project) {
     return (
       <div style={{ maxWidth: 800 }}>
@@ -338,11 +386,43 @@ export default function ProjectDetailPage() {
               <input className="field" placeholder="Name" value={projectForm.name} onChange={e => setProjectForm({ ...projectForm, name: e.target.value })} required />
               <input className="field" placeholder="Base URL" value={projectForm.base_url} onChange={e => setProjectForm({ ...projectForm, base_url: e.target.value })} required />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
               <input className="field" placeholder="Description" value={projectForm.description} onChange={e => setProjectForm({ ...projectForm, description: e.target.value })} />
               <select className="field" value={projectForm.schedule} onChange={e => setProjectForm({ ...projectForm, schedule: e.target.value })}>
                 {SCHEDULE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+              <input className="field" placeholder="Webhook URL on failure (https://...)" value={projectForm.webhook_url} onChange={e => setProjectForm({ ...projectForm, webhook_url: e.target.value })} />
+              <input className="field" type="number" placeholder="Timeout (ms, default 60000)" value={projectForm.timeout_ms} onChange={e => setProjectForm({ ...projectForm, timeout_ms: parseInt(e.target.value) || 60000 })} />
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginBottom: 6 }}>
+                Env Variables (JSON) — use <code style={{ background: 'rgba(255,255,255,0.05)', padding: '1px 4px', borderRadius: 3 }}>{'{{VAR_NAME}}'}</code> in flow steps
+              </div>
+              <textarea className="field" rows={3} placeholder='{"EMAIL": "test@example.com", "PASSWORD": "secret123"}' value={projectForm.env_vars} onChange={e => setProjectForm({ ...projectForm, env_vars: e.target.value })} style={{ fontFamily: 'monospace', fontSize: 12, resize: 'vertical' }} />
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}>
+                <div
+                  onClick={() => setProjectForm({ ...projectForm, headless: projectForm.headless ? 0 : 1 })}
+                  style={{
+                    width: 36, height: 20, borderRadius: 10, cursor: 'pointer', transition: 'background 0.2s',
+                    background: projectForm.headless ? 'var(--accent)' : 'rgba(255,255,255,0.1)',
+                    position: 'relative', flexShrink: 0,
+                  }}
+                >
+                  <div style={{
+                    position: 'absolute', top: 3, left: projectForm.headless ? 19 : 3,
+                    width: 14, height: 14, borderRadius: '50%', background: 'white',
+                    transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                  }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>Headless mode</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{projectForm.headless ? 'Runs silently in background — no browser window' : 'Shows browser window — good for watching test simulation'}</div>
+                </div>
+              </label>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', gap: 8 }}>
@@ -456,12 +536,26 @@ export default function ProjectDetailPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 14, fontWeight: 600 }}>Test Flows</span>
           <span className="badge badge-neutral mono">{flows.length}</span>
-          {anyRunning && <span className="badge badge-running" style={{ fontSize: 10 }}><span className="status-dot running" style={{ width: 5, height: 5 }} />Active</span>}
+          {anyRunning && (() => {
+            const runningCount = flows.filter(f => f.runs[0]?.status === 'running').length;
+            const pendingCount = flows.filter(f => f.runs[0]?.status === 'pending').length;
+            return (
+              <span className="badge badge-running" style={{ fontSize: 10, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <span className="status-dot running" style={{ width: 5, height: 5 }} />
+                {runningCount > 0 ? `${runningCount} running` : ''}{runningCount > 0 && pendingCount > 0 ? ' · ' : ''}{pendingCount > 0 ? `${pendingCount} waiting` : ''}
+              </span>
+            );
+          })()}
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {flows.length > 0 && (
+          {flows.length > 0 && !anyRunning && (
             <button onClick={handleRunAll} disabled={runningAll} className="btn btn-success btn-sm">
-              {runningAll ? 'Starting…' : `▶▶ Run All (${flows.length})`}
+              {runningAll ? 'Queuing…' : `▶▶ Run All (${flows.length})`}
+            </button>
+          )}
+          {anyRunning && (
+            <button onClick={handleStopAll} disabled={stoppingAll} className="btn btn-warning btn-sm">
+              {stoppingAll ? '…' : '⏹ Stop All'}
             </button>
           )}
           {flows.length > 0 && !clearConfirm && (
@@ -492,6 +586,9 @@ export default function ProjectDetailPage() {
             {importing ? 'Importing…' : '📂 Import JSON'}
             <input type="file" accept=".json" style={{ display: 'none' }} onChange={handleImport} disabled={importing} />
           </label>
+          {flows.length > 0 && (
+            <button onClick={handleExportCSV} className="btn btn-ghost btn-sm">⬇ Export CSV</button>
+          )}
           <a href="/api/flows/template" download="flows-template.json" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none' }}>⬇ Template</a>
           {!recordingSessionId && !recordingScript && (
             <button onClick={handleStartRecording} className="btn btn-danger btn-sm">🔴 Record</button>
@@ -578,6 +675,8 @@ export default function ProjectDetailPage() {
                           {triggering === flow.id ? '…' : '▶ Run'}
                         </button>
                       )}
+                      <IconBtn onClick={() => handleReorder(flow.id, 'up')} title="Move up" hoverColor="var(--accent)">↑</IconBtn>
+                      <IconBtn onClick={() => handleReorder(flow.id, 'down')} title="Move down" hoverColor="var(--accent)">↓</IconBtn>
                       {flow.type !== 'recorded' && (
                         <IconBtn onClick={() => isEditing ? setEditingFlow(null) : handleStartEdit(flow)} title="Edit steps" hoverColor="var(--accent)">✎</IconBtn>
                       )}

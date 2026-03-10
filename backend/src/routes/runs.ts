@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import db from '../db';
-import { runFlow, cancelRun } from '../services/runner';
+import { runFlow, cancelRun, runFlowsSequential, cancelProjectQueue } from '../services/runner';
 
 const router = Router();
 
@@ -86,24 +86,58 @@ router.post('/flow/:flowId/run', async (req, res) => {
   }
 });
 
-// Run ALL flows for a project (skips flows that already have an active run)
+// Run ALL flows for a project — sequentially, one by one
 router.post('/project/:projectId/run-all', async (req, res) => {
   try {
     const projectId = parseInt(req.params.projectId);
     const flows = db.prepare('SELECT * FROM flows WHERE project_id = ?').all(projectId) as any[];
     if (flows.length === 0) return res.status(400).json({ error: 'No flows in this project' });
 
-    const runIds: number[] = [];
-    const skipped: number[] = [];
+    // Skip flows that already have an active run
+    const pairs: { flowId: number; runId: number }[] = [];
     for (const flow of flows) {
       const activeRun = db.prepare(`SELECT id FROM runs WHERE flow_id = ? AND status IN ('running', 'pending')`).get(flow.id);
-      if (activeRun) { skipped.push(flow.id); continue; }
+      if (activeRun) continue;
       const result = db.prepare('INSERT INTO runs (flow_id) VALUES (?)').run(flow.id);
-      const runId = Number(result.lastInsertRowid);
-      runIds.push(runId);
-      runFlow(flow.id, runId).catch(console.error);
+      pairs.push({ flowId: flow.id, runId: Number(result.lastInsertRowid) });
     }
-    res.status(202).json({ message: `Started ${runIds.length} runs`, run_ids: runIds, skipped });
+
+    if (pairs.length === 0) return res.status(409).json({ error: 'All flows already have active runs.' });
+
+    // Run sequentially in background
+    runFlowsSequential(projectId, pairs).catch(console.error);
+
+    res.status(202).json({ message: `Queued ${pairs.length} flows (sequential)`, run_ids: pairs.map(p => p.runId) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Stop all — cancel current run + drain the queue
+router.post('/project/:projectId/stop-all', (req, res) => {
+  try {
+    const projectId = parseInt(req.params.projectId);
+
+    // Stop the queue so pending runs don't start
+    cancelProjectQueue(projectId);
+
+    // Cancel any currently running run in this project
+    const activeRun = db.prepare(`
+      SELECT r.id FROM runs r
+      JOIN flows f ON r.flow_id = f.id
+      WHERE f.project_id = ? AND r.status IN ('running', 'pending')
+      ORDER BY r.id DESC LIMIT 1
+    `).get(projectId) as any;
+
+    if (activeRun) {
+      const cancelled = cancelRun(activeRun.id);
+      if (!cancelled) {
+        db.prepare(`UPDATE runs SET status = 'failed', error_message = 'Stopped by user.', finished_at = CURRENT_TIMESTAMP WHERE id = ?`)
+          .run(activeRun.id);
+      }
+    }
+
+    res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

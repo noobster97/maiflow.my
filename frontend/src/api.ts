@@ -8,6 +8,10 @@ export interface Project {
   base_url: string;
   description: string;
   schedule: string | null;
+  headless: number; // 0 or 1
+  timeout_ms: number;
+  webhook_url: string | null;
+  env_vars: string; // JSON string
   created_at: string;
   // health stats (from list endpoint)
   total_flows?: number;
@@ -73,6 +77,7 @@ export const flowsApi = {
   update: (id: number, data: Partial<Flow>) => api.put<Flow>(`/flows/${id}`, data).then(r => r.data),
   delete: (id: number) => api.delete(`/flows/${id}`).then(r => r.data),
   import: (projectId: number, flows: any[]) => api.post<{ created: number }>(`/flows/import/${projectId}`, flows).then(r => r.data),
+  reorder: (projectId: number, updates: { id: number; order_index: number }[]) => api.put(`/flows/project/${projectId}/reorder`, updates).then(r => r.data),
   clone: (id: number) => api.post<Flow>(`/flows/${id}/clone`).then(r => r.data),
   templateUrl: () => `/api/flows/template`,
 };
@@ -89,5 +94,6 @@ export const runsApi = {
   trigger: (flowId: number) => api.post<{ run_id: number }>(`/runs/flow/${flowId}/run`).then(r => r.data),
   cancel: (id: number) => api.post(`/runs/${id}/cancel`).then(r => r.data),
   runAll: (projectId: number) => api.post<{ message: string; run_ids: number[] }>(`/runs/project/${projectId}/run-all`).then(r => r.data),
+  stopAll: (projectId: number) => api.post(`/runs/project/${projectId}/stop-all`).then(r => r.data),
   recent: (limit?: number) => api.get<Run[]>(`/runs/recent/${limit || 20}`).then(r => r.data),
 };

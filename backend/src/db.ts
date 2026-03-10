@@ -59,6 +59,11 @@ try { db.exec(`ALTER TABLE runs ADD COLUMN live_screenshot TEXT DEFAULT NULL`); 
 // New column migrations
 try { db.exec(`ALTER TABLE projects ADD COLUMN schedule TEXT DEFAULT NULL`); } catch {}
 try { db.exec(`ALTER TABLE flows ADD COLUMN retry_on_failure INTEGER DEFAULT 0`); } catch {}
+try { db.exec(`ALTER TABLE projects ADD COLUMN headless INTEGER DEFAULT 0`); } catch {}
+try { db.exec(`ALTER TABLE projects ADD COLUMN timeout_ms INTEGER DEFAULT 60000`); } catch {}
+try { db.exec(`ALTER TABLE projects ADD COLUMN webhook_url TEXT DEFAULT NULL`); } catch {}
+try { db.exec(`ALTER TABLE projects ADD COLUMN env_vars TEXT DEFAULT '{}'`); } catch {}
+try { db.exec(`ALTER TABLE flows ADD COLUMN order_index INTEGER DEFAULT 0`); } catch {}
 
 // Indexes for query performance
 db.exec(`CREATE INDEX IF NOT EXISTS idx_flows_project_id ON flows(project_id)`);

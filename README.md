@@ -52,6 +52,26 @@ Self-hosted E2E browser automation testing platform. Define test flows, run them
 - Edit manual flow steps inline, keyboard Escape closes panels
 - Inline notifications replacing all `alert()` calls
 
+### Session 5 — 2026-03-11
+- Sequential run queue: Run All now runs flows one-by-one, not simultaneously
+- Stop All button: cancels project queue + current active run
+- `timeoutHandle` scope bug fixed — was declared inside `try {}`, inaccessible in `catch {}`, causing all assertion failures to show "Run ended unexpectedly" instead of real error
+- Headless toggle: project setting — headless=false shows browser window during run
+- Run timeout: auto-close browser after configurable ms (default 60s)
+- Webhook on failure: POST to URL with run/flow/error payload
+- Env variables: `{{VAR_NAME}}` substitution in step values + URLs
+- Flow ordering: `order_index` column + ↑↓ reorder buttons in UI
+- Export CSV: download run history as CSV from project toolbar
+- Queue indicator badge: shows "X running · Y waiting" in project UI
+- Fix relative URL: runner prepends `base_url` for URLs starting with `/` or no `http`
+- Fix `assert_text` 30s hang: added `{ timeout: 8000 }` to `page.textContent()`
+- Fix SPA timing: `waitUntil: 'domcontentloaded'` instead of `networkidle`
+- Fix timezone "8h ago" bug: `parseUtc()` helper appends `Z` to SQLite UTC strings
+- Fix stuck runs: safety net in `finally` force-fails runs still in 'running' state
+- RunDetailPage back button: now goes to flow detail page, not dashboard
+- `flows-maigambar.json` rewrite: 44 flows, correct assertion texts, wait steps after navigates
+- Settings: removed duplicate "Clear Run Data" (moved to toolbar as "🧹 Clear History")
+
 ### Session 4 — 2026-03-10
 - Flow detail page `/flows/:id` — breadcrumb, stats (pass rate, total runs, avg duration, last status), SVG pass rate bar chart, run history table, steps tab
 - Dashboard overhaul — stat cards with glow blobs, colored left-border run rows, improved empty state

@@ -58,8 +58,8 @@ router.post('/import/:projectId', (req, res) => {
     for (const flow of flows) {
       if (!flow.name || !Array.isArray(flow.steps)) continue;
       const result = db.prepare(
-        'INSERT INTO flows (project_id, name, steps, type) VALUES (?, ?, ?, ?)'
-      ).run(projectId, flow.name, JSON.stringify(flow.steps), 'manual');
+        'INSERT INTO flows (project_id, name, steps, type, order_index) VALUES (?, ?, ?, ?, ?)'
+      ).run(projectId, flow.name, JSON.stringify(flow.steps), 'manual', created.length);
       created.push(Number(result.lastInsertRowid));
     }
     res.json({ created: created.length, ids: created });
@@ -71,7 +71,7 @@ router.post('/import/:projectId', (req, res) => {
 // List flows for a project with their recent runs embedded (eliminates N+1)
 router.get('/project/:projectId/with-runs', (req, res) => {
   try {
-    const flows = db.prepare('SELECT * FROM flows WHERE project_id = ? ORDER BY created_at DESC').all(req.params.projectId) as any[];
+    const flows = db.prepare('SELECT * FROM flows WHERE project_id = ? ORDER BY order_index ASC, created_at ASC').all(req.params.projectId) as any[];
     if (flows.length === 0) return res.json([]);
 
     const flowIds = flows.map((f: any) => f.id);
@@ -101,7 +101,7 @@ router.get('/project/:projectId/with-runs', (req, res) => {
 // List flows for a project
 router.get('/project/:projectId', (req, res) => {
   try {
-    const flows = db.prepare('SELECT * FROM flows WHERE project_id = ? ORDER BY created_at DESC').all(req.params.projectId);
+    const flows = db.prepare('SELECT * FROM flows WHERE project_id = ? ORDER BY order_index ASC, created_at ASC').all(req.params.projectId);
     const result = (flows as any[]).map((f: any) => ({ ...f, steps: JSON.parse(f.steps) }));
     res.json(result);
   } catch (err: any) {
@@ -168,6 +168,19 @@ router.put('/:id', (req, res) => {
 router.delete('/:id', (req, res) => {
   try {
     db.prepare('DELETE FROM flows WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reorder flows — accepts [{id, order_index}]
+router.put('/project/:projectId/reorder', (req, res) => {
+  try {
+    const updates = req.body as { id: number; order_index: number }[];
+    if (!Array.isArray(updates)) return res.status(400).json({ error: 'Expected array of {id, order_index}' });
+    const stmt = db.prepare('UPDATE flows SET order_index = ? WHERE id = ?');
+    for (const { id, order_index } of updates) stmt.run(order_index, id);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

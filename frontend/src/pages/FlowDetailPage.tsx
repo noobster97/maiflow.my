@@ -301,7 +301,7 @@ export default function FlowDetailPage() {
                         {run.duration_ms ? `${(run.duration_ms / 1000).toFixed(2)}s` : '—'}
                       </td>
                       <td style={{ padding: '12px 14px', color: 'var(--text-subtle)', fontSize: 12 }}>
-                        {run.started_at ? new Date(run.started_at).toLocaleString() : '—'}
+                        {run.started_at ? new Date(run.started_at.includes('T') ? run.started_at : run.started_at.replace(' ', 'T') + 'Z').toLocaleString() : '—'}
                       </td>
                       <td style={{ padding: '12px 14px', maxWidth: 260 }}>
                         {run.error_message ? (

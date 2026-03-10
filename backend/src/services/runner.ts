@@ -8,8 +8,43 @@ import { StepAction } from '../types';
 const TEMP_DIR = path.join(__dirname, '..', 'temp');
 if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
 
+function substituteEnvVars(value: string, envVars: Record<string, string>): string {
+  if (!value || typeof value !== 'string') return value;
+  return value.replace(/\{\{(\w+)\}\}/g, (_, key) => envVars[key] !== undefined ? envVars[key] : `{{${key}}}`);
+}
+
+async function callWebhook(url: string, payload: object): Promise<void> {
+  try {
+    await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  } catch {}
+}
+
 // Track active runs so they can be cancelled
 const activeRuns = new Map<number, { cancel: () => void }>();
+
+// Track per-project sequential queues
+const projectQueues = new Map<number, { cancelled: boolean }>();
+
+export function cancelProjectQueue(projectId: number): void {
+  const q = projectQueues.get(projectId);
+  if (q) q.cancelled = true;
+}
+
+export async function runFlowsSequential(projectId: number, pairs: { flowId: number; runId: number }[]): Promise<void> {
+  const state = { cancelled: false };
+  projectQueues.set(projectId, state);
+  try {
+    for (const { flowId, runId } of pairs) {
+      if (state.cancelled) {
+        db.prepare(`UPDATE runs SET status = 'failed', error_message = 'Stopped by user.', finished_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'`).run(runId);
+        continue;
+      }
+      await runFlow(flowId, runId);
+    }
+  } finally {
+    projectQueues.delete(projectId);
+  }
+}
 
 export function cancelRun(runId: number): boolean {
   const entry = activeRuns.get(runId);
@@ -38,11 +73,16 @@ function describeStep(step: StepAction, index: number, total: number): string {
   }
 }
 
-async function executeStep(page: Page, step: StepAction, runId: number, stepIndex: number): Promise<void> {
+async function executeStep(page: Page, step: StepAction, runId: number, stepIndex: number, baseUrl?: string, envVars: Record<string, string> = {}): Promise<void> {
   switch (step.action) {
-    case 'navigate':
-      await page.goto(step.url, { waitUntil: 'networkidle' });
+    case 'navigate': {
+      let url: string = substituteEnvVars(step.url, envVars);
+      if (baseUrl && (url.startsWith('/') || !url.startsWith('http'))) {
+        url = baseUrl.replace(/\/$/, '') + (url.startsWith('/') ? url : '/' + url);
+      }
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
       break;
+    }
     case 'click':
       await page.waitForSelector(step.selector, { timeout: 10000 });
       await page.click(step.selector);
@@ -51,7 +91,7 @@ async function executeStep(page: Page, step: StepAction, runId: number, stepInde
       break;
     case 'fill':
       await page.waitForSelector(step.selector, { timeout: 10000 });
-      await page.fill(step.selector, step.value);
+      await page.fill(step.selector, substituteEnvVars(step.value, envVars));
       break;
     case 'select':
       await page.waitForSelector(step.selector, { timeout: 10000 });
@@ -72,7 +112,7 @@ async function executeStep(page: Page, step: StepAction, runId: number, stepInde
       break;
     }
     case 'assert_text': {
-      const text = await page.textContent(step.selector);
+      const text = await page.textContent(step.selector, { timeout: 8000 });
       if (!text || !text.includes(step.contains))
         throw new Error(`Text assertion failed. Expected "${step.contains}" in "${text}"`);
       break;
@@ -114,6 +154,11 @@ async function runRecordedFlow(flow: any, runId: number): Promise<void> {
   const startTime = Date.now();
   db.prepare(`UPDATE runs SET status = 'running', started_at = CURRENT_TIMESTAMP WHERE id = ?`).run(runId);
 
+  const proj = db.prepare('SELECT headless, timeout_ms, webhook_url FROM projects WHERE id = ?').get(flow.project_id) as any;
+  const recHeadless = !!proj?.headless;
+  const recTimeout = proj?.timeout_ms || 60000;
+  const recWebhookUrl: string | null = proj?.webhook_url || null;
+
   const script: string = flow.script || '';
   if (!script.trim()) {
     db.prepare(`UPDATE runs SET status = 'failed', error_message = ?, duration_ms = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`)
@@ -138,7 +183,7 @@ import { chromium } from 'playwright';
 import { expect } from '@playwright/test';
 
 (async () => {
-  const browser = await chromium.launch({ headless: false, slowMo: 600 });
+  const browser = await chromium.launch({ headless: ${recHeadless}, slowMo: ${recHeadless ? 0 : 600} });
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await context.newPage();
   try {
@@ -161,7 +206,7 @@ ${body}
   let cancelled = false;
   const { promise, child } = execWithHandle(`npx tsx "${tempFile}"`, {
     cwd: path.join(__dirname, '..', '..'),
-    timeout: 60000,
+    timeout: recTimeout + 5000,
   });
 
   activeRuns.set(runId, {
@@ -197,6 +242,9 @@ ${body}
     }
     db.prepare(`UPDATE runs SET status = 'failed', error_message = ?, duration_ms = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`)
       .run(errorMsg, Date.now() - startTime, runId);
+    if (recWebhookUrl) {
+      callWebhook(recWebhookUrl, { run_id: runId, flow_id: flow.id, status: 'failed', error: errorMsg, timestamp: new Date().toISOString() });
+    }
 
   } finally {
     activeRuns.delete(runId);
@@ -220,15 +268,23 @@ export async function runFlow(flowId: number, runId: number, isRetry = false): P
   }
 
   const steps: StepAction[] = JSON.parse(flow.steps);
+  const project = db.prepare('SELECT base_url, headless, timeout_ms, webhook_url, env_vars FROM projects WHERE id = ?').get(flow.project_id) as any;
+  const baseUrl: string = project?.base_url || '';
+  const isHeadless: boolean = !!project?.headless;
+  const timeoutMs: number = project?.timeout_ms || 60000;
+  const webhookUrl: string | null = project?.webhook_url || null;
+  const envVars: Record<string, string> = (() => { try { return JSON.parse(project?.env_vars || '{}'); } catch { return {}; } })();
   db.prepare(`UPDATE runs SET status = 'running', started_at = CURRENT_TIMESTAMP WHERE id = ?`).run(runId);
 
   const startTime = Date.now();
   let browser: Browser | null = null;
   let cancelled = false;
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
   activeRuns.set(runId, {
     cancel: () => {
       cancelled = true;
+      if (timeoutHandle) clearTimeout(timeoutHandle);
       if (browser) browser.close().catch(() => {});
       const dur = Date.now() - startTime;
       db.prepare(`UPDATE runs SET status = 'failed', error_message = 'Cancelled by user.', duration_ms = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`)
@@ -237,10 +293,15 @@ export async function runFlow(flowId: number, runId: number, isRetry = false): P
   });
 
   try {
-    browser = await chromium.launch({ headless: false, slowMo: 600 });
+    browser = await chromium.launch({ headless: isHeadless, slowMo: isHeadless ? 0 : 600 });
     const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const page = await context.newPage();
     page.on('pageerror', () => {});
+
+    // Auto-timeout
+    timeoutHandle = setTimeout(() => {
+      if (browser) browser.close().catch(() => {});
+    }, timeoutMs);
 
     const liveFile = `live_${runId}.png`;
     const livePath = path.join(SCREENSHOTS_DIR, liveFile);
@@ -249,17 +310,18 @@ export async function runFlow(flowId: number, runId: number, isRetry = false): P
       if (cancelled) return;
       const stepDesc = describeStep(steps[i], i, steps.length);
       db.prepare(`UPDATE runs SET current_step = ? WHERE id = ?`).run(stepDesc, runId);
-      await executeStep(page, steps[i], runId, i);
+      await executeStep(page, steps[i], runId, i, baseUrl, envVars);
       try {
         await page.screenshot({ path: livePath, fullPage: false });
         db.prepare(`UPDATE runs SET live_screenshot = ? WHERE id = ?`).run(liveFile, runId);
       } catch {}
       // Small pause so live view is visible between steps
-      await page.waitForTimeout(400);
+      try { await page.waitForTimeout(400); } catch {}
     }
 
     if (cancelled) return;
 
+    clearTimeout(timeoutHandle);
     db.prepare(`UPDATE runs SET current_step = 'Finishing...' WHERE id = ?`).run(runId);
     const filename = `run_${runId}_final_pass.png`;
     await page.screenshot({ path: path.join(SCREENSHOTS_DIR, filename), fullPage: false });
@@ -268,6 +330,7 @@ export async function runFlow(flowId: number, runId: number, isRetry = false): P
       .run(Date.now() - startTime, runId);
 
   } catch (err: any) {
+    clearTimeout(timeoutHandle);
     if (cancelled) return;
     const duration = Date.now() - startTime;
     try {
@@ -282,6 +345,9 @@ export async function runFlow(flowId: number, runId: number, isRetry = false): P
     } catch {}
     db.prepare(`UPDATE runs SET status = 'failed', error_message = ?, duration_ms = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`)
       .run(err.message || 'Unknown error', duration, runId);
+    if (webhookUrl) {
+      callWebhook(webhookUrl, { run_id: runId, flow_id: flowId, status: 'failed', error: err.message, timestamp: new Date().toISOString() });
+    }
     if (flow.retry_on_failure && !isRetry) {
       console.log(`[runner] Flow ${flowId} failed — retrying once`);
       const retryResult = db.prepare('INSERT INTO runs (flow_id) VALUES (?)').run(flowId);
@@ -290,5 +356,10 @@ export async function runFlow(flowId: number, runId: number, isRetry = false): P
   } finally {
     activeRuns.delete(runId);
     if (browser) await browser.close().catch(() => {});
+    // Safety net — if run is still 'running' after all paths, force-fail it
+    const stuck = db.prepare(`SELECT status FROM runs WHERE id = ?`).get(runId) as any;
+    if (stuck?.status === 'running') {
+      db.prepare(`UPDATE runs SET status = 'failed', error_message = 'Run ended unexpectedly.', finished_at = CURRENT_TIMESTAMP WHERE id = ?`).run(runId);
+    }
   }
 }

@@ -70,10 +70,10 @@ export default function RunDetailPage() {
     <div style={{ maxWidth: 800 }}>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <Link to="/" style={{ textDecoration: 'none' }}>
-          <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+        <Link to={`/flows/${run.flow_id}`} style={{ textDecoration: 'none' }}>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
-            Dashboard
+            {run.flow_name || 'Flow'}
           </span>
         </Link>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>

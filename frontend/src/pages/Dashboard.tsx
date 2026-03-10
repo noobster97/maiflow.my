@@ -3,8 +3,11 @@ import { Link } from 'react-router-dom';
 import { runsApi, Run } from '../api';
 import StatusBadge from '../components/StatusBadge';
 
+function parseUtc(d: string): Date {
+  return (!d.includes('T') && !d.endsWith('Z')) ? new Date(d.replace(' ', 'T') + 'Z') : new Date(d);
+}
 function timeAgo(dateStr: string) {
-  const diff = Date.now() - new Date(dateStr).getTime();
+  const diff = Date.now() - parseUtc(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;

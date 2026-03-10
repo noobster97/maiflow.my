@@ -44,12 +44,12 @@ router.get('/:id', (req, res) => {
 // Create project
 router.post('/', (req, res) => {
   try {
-    const { name, base_url, description, schedule } = req.body;
+    const { name, base_url, description, schedule, headless, timeout_ms, webhook_url, env_vars } = req.body;
     if (!name || !base_url) return res.status(400).json({ error: 'name and base_url are required' });
     if (!base_url.startsWith('http://') && !base_url.startsWith('https://')) {
       return res.status(400).json({ error: 'base_url must start with http:// or https://' });
     }
-    const result = db.prepare('INSERT INTO projects (name, base_url, description, schedule) VALUES (?, ?, ?, ?)').run(name, base_url, description || '', schedule || null);
+    const result = db.prepare('INSERT INTO projects (name, base_url, description, schedule, headless, timeout_ms, webhook_url, env_vars) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(name, base_url, description || '', schedule || null, headless ? 1 : 0, timeout_ms || 60000, webhook_url || null, env_vars || '{}');
     const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(Number(result.lastInsertRowid)) as any;
     scheduleProject(project.id, project.schedule);
     res.status(201).json(project);
@@ -61,12 +61,12 @@ router.post('/', (req, res) => {
 // Update project
 router.put('/:id', (req, res) => {
   try {
-    const { name, base_url, description, schedule } = req.body;
+    const { name, base_url, description, schedule, headless, timeout_ms, webhook_url, env_vars } = req.body;
     if (base_url && !base_url.startsWith('http://') && !base_url.startsWith('https://')) {
       return res.status(400).json({ error: 'base_url must start with http:// or https://' });
     }
-    db.prepare('UPDATE projects SET name = ?, base_url = ?, description = ?, schedule = ? WHERE id = ?')
-      .run(name, base_url, description, schedule || null, req.params.id);
+    db.prepare('UPDATE projects SET name = ?, base_url = ?, description = ?, schedule = ?, headless = ?, timeout_ms = ?, webhook_url = ?, env_vars = ? WHERE id = ?')
+      .run(name, base_url, description, schedule || null, headless ? 1 : 0, timeout_ms || 60000, webhook_url || null, env_vars || '{}', req.params.id);
     const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id) as any;
     scheduleProject(project.id, project.schedule);
     res.json(project);
@@ -123,6 +123,12 @@ router.delete('/:id/runs', (req, res) => {
     // Delete all runs for these flows
     const deletedRuns = db.prepare(`DELETE FROM runs WHERE flow_id IN (${placeholders})`).run(...flowIds);
 
+    // Reset auto-increment counters if tables are now globally empty
+    const runsLeft = (db.prepare('SELECT COUNT(*) as c FROM runs').get() as any).c;
+    const ssLeft = (db.prepare('SELECT COUNT(*) as c FROM screenshots').get() as any).c;
+    if (runsLeft === 0) db.prepare(`DELETE FROM sqlite_sequence WHERE name = 'runs'`).run();
+    if (ssLeft === 0) db.prepare(`DELETE FROM sqlite_sequence WHERE name = 'screenshots'`).run();
+
     res.json({ deleted_runs: deletedRuns.changes, deleted_screenshots: deletedScreenshots });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -165,6 +171,14 @@ router.delete('/:id/flows', (req, res) => {
       : 0;
 
     db.prepare(`DELETE FROM flows WHERE id IN (${placeholders})`).run(...flowIds);
+
+    // Reset auto-increment counters if tables are now globally empty
+    const runsLeft = (db.prepare('SELECT COUNT(*) as c FROM runs').get() as any).c;
+    const ssLeft = (db.prepare('SELECT COUNT(*) as c FROM screenshots').get() as any).c;
+    const flowsLeft = (db.prepare('SELECT COUNT(*) as c FROM flows').get() as any).c;
+    if (runsLeft === 0) db.prepare(`DELETE FROM sqlite_sequence WHERE name = 'runs'`).run();
+    if (ssLeft === 0) db.prepare(`DELETE FROM sqlite_sequence WHERE name = 'screenshots'`).run();
+    if (flowsLeft === 0) db.prepare(`DELETE FROM sqlite_sequence WHERE name = 'flows'`).run();
 
     res.json({ deleted_flows: flows.length, deleted_runs: deletedRuns, deleted_screenshots: deletedScreenshots });
   } catch (err: any) {
