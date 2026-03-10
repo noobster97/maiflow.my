@@ -76,6 +76,10 @@ export default function ProjectDetailPage() {
   const [editFlowName, setEditFlowName]     = useState('');
   const [editFlowSteps, setEditFlowSteps]   = useState<any[]>([]);
   const [savingEdit, setSavingEdit]         = useState(false);
+  const [clearingRuns, setClearingRuns]     = useState(false);
+  const [clearConfirm, setClearConfirm]     = useState(false);
+  const [clearingFlows, setClearingFlows]   = useState(false);
+  const [clearFlowsConfirm, setClearFlowsConfirm] = useState(false);
 
   // Recorder
   const [recordingSessionId, setRecordingSessionId] = useState<string | null>(null);
@@ -269,6 +273,28 @@ export default function ProjectDetailPage() {
     navigate('/projects');
   };
 
+  const handleClearRuns = async () => {
+    if (!id) return;
+    setClearingRuns(true);
+    try {
+      const result = await projectsApi.clearRuns(parseInt(id));
+      setClearConfirm(false);
+      loadFlows();
+      notify(`Cleared ${result.deleted_runs} runs and ${result.deleted_screenshots} screenshots.`);
+    } finally { setClearingRuns(false); }
+  };
+
+  const handleClearFlows = async () => {
+    if (!id) return;
+    setClearingFlows(true);
+    try {
+      const result = await projectsApi.clearFlows(parseInt(id));
+      setClearFlowsConfirm(false);
+      loadFlows();
+      notify(`Deleted ${result.deleted_flows} flows, ${result.deleted_runs} runs, ${result.deleted_screenshots} screenshots.`);
+    } finally { setClearingFlows(false); }
+  };
+
   if (!project) {
     return (
       <div style={{ maxWidth: 800 }}>
@@ -323,19 +349,22 @@ export default function ProjectDetailPage() {
                 <button type="submit" disabled={savingProject} className="btn btn-primary btn-sm">{savingProject ? 'Saving…' : 'Save'}</button>
                 <button type="button" onClick={() => setEditingProject(false)} className="btn btn-ghost btn-sm">Cancel</button>
               </div>
-              {!deletingProject ? (
-                <button type="button" onClick={() => setDeletingProject(true)} className="btn btn-sm" style={{ background: 'transparent', color: 'var(--text-subtle)', border: '1px solid transparent', fontSize: 12 }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--error)'; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-subtle)'; }}>
-                  Delete Project
-                </button>
-              ) : (
-                <div className="confirm-dialog animate-slide-up" style={{ padding: '8px 12px' }}>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Delete "{project.name}" and all its flows?</span>
-                  <button type="button" onClick={handleDeleteProject} className="btn btn-danger btn-sm">Delete</button>
-                  <button type="button" onClick={() => setDeletingProject(false)} className="btn btn-ghost btn-sm">Cancel</button>
-                </div>
-              )}
+              <div style={{ display: 'flex', gap: 6 }}>
+                {/* Delete project */}
+                {!deletingProject ? (
+                  <button type="button" onClick={() => setDeletingProject(true)} className="btn btn-sm" style={{ background: 'transparent', color: 'var(--text-subtle)', border: '1px solid transparent', fontSize: 12 }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--error)'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-subtle)'; }}>
+                    Delete Project
+                  </button>
+                ) : (
+                  <div className="confirm-dialog animate-slide-up" style={{ padding: '8px 12px' }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Delete "{project.name}" and all its flows?</span>
+                    <button type="button" onClick={handleDeleteProject} className="btn btn-danger btn-sm">Delete</button>
+                    <button type="button" onClick={() => setDeletingProject(false)} className="btn btn-ghost btn-sm">Cancel</button>
+                  </div>
+                )}
+              </div>
             </div>
           </form>
         </div>
@@ -435,6 +464,30 @@ export default function ProjectDetailPage() {
               {runningAll ? 'Starting…' : `▶▶ Run All (${flows.length})`}
             </button>
           )}
+          {flows.length > 0 && !clearConfirm && (
+            <button onClick={() => setClearConfirm(true)} className="btn btn-ghost btn-sm" style={{ color: 'var(--text-subtle)' }}>
+              🧹 Clear History
+            </button>
+          )}
+          {clearConfirm && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '4px 10px' }}>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Clear all runs?</span>
+              <button onClick={handleClearRuns} disabled={clearingRuns} className="btn btn-warning btn-sm">{clearingRuns ? '…' : 'Clear'}</button>
+              <button onClick={() => setClearConfirm(false)} className="btn btn-ghost btn-sm">Cancel</button>
+            </div>
+          )}
+          {flows.length > 0 && !clearFlowsConfirm && (
+            <button onClick={() => setClearFlowsConfirm(true)} className="btn btn-ghost btn-sm" style={{ color: 'var(--text-subtle)' }}>
+              🗑 Clear All Flows
+            </button>
+          )}
+          {clearFlowsConfirm && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--surface)', border: '1px solid rgba(248,113,113,0.2)', borderRadius: 8, padding: '4px 10px' }}>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Delete ALL flows + history?</span>
+              <button onClick={handleClearFlows} disabled={clearingFlows} className="btn btn-danger btn-sm">{clearingFlows ? '…' : 'Delete All'}</button>
+              <button onClick={() => setClearFlowsConfirm(false)} className="btn btn-ghost btn-sm">Cancel</button>
+            </div>
+          )}
           <label className="btn btn-purple btn-sm" style={{ cursor: 'pointer' }}>
             {importing ? 'Importing…' : '📂 Import JSON'}
             <input type="file" accept=".json" style={{ display: 'none' }} onChange={handleImport} disabled={importing} />
@@ -462,17 +515,48 @@ export default function ProjectDetailPage() {
             const rate      = passRate(flow.runs);
             const isEditing = editingFlow === flow.id;
 
+            const statusBorderColor =
+              !latestRun ? 'var(--border)' :
+              latestRun.status === 'passed'  ? 'var(--success)' :
+              latestRun.status === 'failed'  ? 'var(--error)' :
+              'var(--running)';
+
+            const thumbFile = latestRun?.live_screenshot;
+
             return (
-              <div key={flow.id} className="card" style={{ borderColor: isActive ? 'rgba(167,139,250,0.2)' : undefined }}>
-                <div style={{ padding: '14px 16px' }}>
+              <div key={flow.id} className="card" style={{ borderColor: isActive ? 'rgba(167,139,250,0.2)' : undefined, borderLeft: `3px solid ${statusBorderColor}`, overflow: 'hidden' }}>
+                {/* Pass rate bar */}
+                {rate && (
+                  <div style={{ height: 3, background: 'rgba(255,255,255,0.04)' }}>
+                    <div style={{
+                      height: '100%',
+                      width: `${rate.pct}%`,
+                      background: rate.pct === 100 ? 'var(--success)' : rate.pct === 0 ? 'var(--error)' : 'linear-gradient(90deg, var(--error), var(--success))',
+                      transition: 'width 0.4s ease',
+                    }} />
+                  </div>
+                )}
+                <div style={{ padding: '14px 16px', display: 'flex', gap: 12 }}>
+                  {/* Screenshot thumbnail */}
+                  {thumbFile && (
+                    <div style={{ flexShrink: 0, width: 80, height: 52, borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--bg)' }}>
+                      <img src={`/api/screenshots/${thumbFile}?t=${latestRun?.id}`} alt="last run" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    </div>
+                  )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
                   {/* Flow header */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <span className={latestRun ? `status-dot ${latestRun.status}` : 'status-dot pending'} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>{flow.name}</div>
+                      <Link to={`/flows/${flow.id}`} style={{ textDecoration: 'none' }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}
+                          onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent)')}
+                          onMouseLeave={e => (e.currentTarget.style.color = 'var(--text)')}
+                        >{flow.name}</div>
+                      </Link>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
                         <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
-                          {flow.type === 'recorded' ? '🔴 Recorded' : `${flow.steps.length} step${flow.steps.length !== 1 ? 's' : ''}`}
+                          {flow.type === 'recorded' ? '⏺ Recorded' : `${flow.steps.length} step${flow.steps.length !== 1 ? 's' : ''}`}
                         </span>
                         {rate && (
                           <span className="mono" style={{ fontSize: 11, color: rate.pct === 100 ? 'var(--success)' : rate.pct === 0 ? 'var(--error)' : 'var(--warning)' }}>
@@ -503,6 +587,12 @@ export default function ProjectDetailPage() {
                       <IconBtn onClick={() => handleToggleRetry(flow)} title={flow.retry_on_failure ? 'Retry: ON — click to disable' : 'Retry: OFF — click to enable'} hoverColor="var(--warning)">
                         <span style={{ color: flow.retry_on_failure ? 'var(--warning)' : undefined }}>↺</span>
                       </IconBtn>
+                      <Link to={`/flows/${flow.id}`} title="View details" style={{ textDecoration: 'none' }}>
+                        <span style={{ fontSize: 14, color: 'var(--text-subtle)', padding: '4px 6px', cursor: 'pointer', borderRadius: 6, display: 'inline-flex', alignItems: 'center' }}
+                          onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent)')}
+                          onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-subtle)')}
+                        >↗</span>
+                      </Link>
                       <IconBtn onClick={() => handleDeleteFlow(flow.id)} title="Delete flow" hoverColor="var(--error)">✕</IconBtn>
                     </div>
                   </div>
@@ -542,7 +632,8 @@ export default function ProjectDetailPage() {
                       <img src={`/api/screenshots/${latestRun.live_screenshot}?t=${Date.now()}`} alt="Live" style={{ width: '100%', display: 'block', maxHeight: 160, objectFit: 'cover', objectPosition: 'top' }} />
                     </div>
                   )}
-                </div>
+                  </div>{/* close flex:1 content wrapper */}
+                </div>{/* close padding row */}
 
                 {/* Run history */}
                 {flow.runs.length > 0 && (

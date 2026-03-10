@@ -3,6 +3,7 @@ import Dashboard from './pages/Dashboard';
 import ProjectsPage from './pages/ProjectsPage';
 import ProjectDetailPage from './pages/ProjectDetailPage';
 import RunDetailPage from './pages/RunDetailPage';
+import FlowDetailPage from './pages/FlowDetailPage';
 
 function NavIcon({ d }: { d: string }) {
   return (
@@ -80,6 +81,7 @@ export default function App() {
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/projects/:id" element={<ProjectDetailPage />} />
           <Route path="/runs/:id" element={<RunDetailPage />} />
+          <Route path="/flows/:id" element={<FlowDetailPage />} />
         </Routes>
       </main>
     </div>

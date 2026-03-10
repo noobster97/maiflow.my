@@ -61,6 +61,8 @@ export const projectsApi = {
   create: (data: Partial<Project>) => api.post<Project>('/projects', data).then(r => r.data),
   update: (id: number, data: Partial<Project>) => api.put<Project>(`/projects/${id}`, data).then(r => r.data),
   delete: (id: number) => api.delete(`/projects/${id}`).then(r => r.data),
+  clearRuns: (id: number) => api.delete<{ deleted_runs: number; deleted_screenshots: number }>(`/projects/${id}/runs`).then(r => r.data),
+  clearFlows: (id: number) => api.delete<{ deleted_flows: number; deleted_runs: number; deleted_screenshots: number }>(`/projects/${id}/flows`).then(r => r.data),
 };
 
 export const flowsApi = {

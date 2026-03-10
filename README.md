@@ -51,7 +51,18 @@ Self-hosted E2E browser automation testing platform. Define test flows, run them
 - Delete project with inline confirm, edit project settings panel
 - Edit manual flow steps inline, keyboard Escape closes panels
 - Inline notifications replacing all `alert()` calls
-- Pending: edit recorded flow script, flow detail page `/flows/:id`
+
+### Session 4 — 2026-03-10
+- Flow detail page `/flows/:id` — breadcrumb, stats (pass rate, total runs, avg duration, last status), SVG pass rate bar chart, run history table, steps tab
+- Dashboard overhaul — stat cards with glow blobs, colored left-border run rows, improved empty state
+- Flow cards visual upgrade — colored left border by status, thin pass rate bar at top, screenshot thumbnail
+- Step execution timing — `waitForLoadState('domcontentloaded')` after click + 400ms delay between steps
+- Vite port changed 5173 → 3000 (avoid conflict with maigambar.my)
+- `🧹 Clear History` button in flows toolbar — clears all run data + screenshots, keeps flow definitions
+- `🗑 Clear All Flows` button in flows toolbar — deletes flow definitions + all run history
+- Backend: `DELETE /api/projects/:id/runs` + `DELETE /api/projects/:id/flows` endpoints
+- Removed duplicate "Clear Run Data" from Settings panel
+- GitHub remote added: `github.com/noobster97/maiflow.my` (main branch), initial push done
 
 ---
 
@@ -64,5 +75,7 @@ Self-hosted E2E browser automation testing platform. Define test flows, run them
 - [x] Schedule runs (cron-based)
 - [x] Retry on failure, clone flow, cancel run
 - [x] Full dark UI overhaul
+- [x] Flow detail page `/flows/:id` with run history + pass rate chart
+- [x] Clear History + Clear All Flows buttons
+- [x] GitHub remote setup
 - [ ] Edit recorded flow script
-- [ ] Flow detail page with full run history + pass rate chart

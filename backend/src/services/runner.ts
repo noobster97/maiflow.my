@@ -46,6 +46,8 @@ async function executeStep(page: Page, step: StepAction, runId: number, stepInde
     case 'click':
       await page.waitForSelector(step.selector, { timeout: 10000 });
       await page.click(step.selector);
+      // Wait for any navigation triggered by the click to settle
+      await page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => {});
       break;
     case 'fill':
       await page.waitForSelector(step.selector, { timeout: 10000 });
@@ -252,6 +254,8 @@ export async function runFlow(flowId: number, runId: number, isRetry = false): P
         await page.screenshot({ path: livePath, fullPage: false });
         db.prepare(`UPDATE runs SET live_screenshot = ? WHERE id = ?`).run(liveFile, runId);
       } catch {}
+      // Small pause so live view is visible between steps
+      await page.waitForTimeout(400);
     }
 
     if (cancelled) return;

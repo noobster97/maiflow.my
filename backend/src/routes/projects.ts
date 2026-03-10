@@ -86,4 +86,90 @@ router.delete('/:id', (req, res) => {
   }
 });
 
+// Clear all runs + screenshots for all flows in a project
+router.delete('/:id/runs', (req, res) => {
+  try {
+    const projectId = req.params.id;
+    // Get all flow IDs for this project
+    const flows = db.prepare('SELECT id FROM flows WHERE project_id = ?').all(projectId) as { id: number }[];
+    if (flows.length === 0) return res.json({ deleted_runs: 0, deleted_screenshots: 0 });
+
+    const flowIds = flows.map(f => f.id);
+    const placeholders = flowIds.map(() => '?').join(',');
+
+    // Get all screenshot filenames to delete from disk
+    const runRows = db.prepare(`SELECT id FROM runs WHERE flow_id IN (${placeholders})`).all(...flowIds) as { id: number }[];
+    const runIds = runRows.map(r => r.id);
+    let deletedScreenshots = 0;
+
+    if (runIds.length > 0) {
+      const runPlaceholders = runIds.map(() => '?').join(',');
+      const screenshots = db.prepare(`SELECT filename FROM screenshots WHERE run_id IN (${runPlaceholders})`).all(...runIds) as { filename: string }[];
+      // Delete screenshot files from disk
+      const { SCREENSHOTS_DIR } = require('../db');
+      const fs = require('fs');
+      const path = require('path');
+      for (const ss of screenshots) {
+        try { fs.unlinkSync(path.join(SCREENSHOTS_DIR, ss.filename)); } catch {}
+      }
+      // Also delete live screenshot files for these runs
+      for (const runId of runIds) {
+        try { fs.unlinkSync(path.join(SCREENSHOTS_DIR, `live_${runId}.png`)); } catch {}
+      }
+      db.prepare(`DELETE FROM screenshots WHERE run_id IN (${runPlaceholders})`).run(...runIds);
+      deletedScreenshots = screenshots.length;
+    }
+
+    // Delete all runs for these flows
+    const deletedRuns = db.prepare(`DELETE FROM runs WHERE flow_id IN (${placeholders})`).run(...flowIds);
+
+    res.json({ deleted_runs: deletedRuns.changes, deleted_screenshots: deletedScreenshots });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Clear all flows (definitions + runs + screenshots) for a project
+router.delete('/:id/flows', (req, res) => {
+  try {
+    const projectId = req.params.id;
+    const flows = db.prepare('SELECT id FROM flows WHERE project_id = ?').all(projectId) as { id: number }[];
+    if (flows.length === 0) return res.json({ deleted_flows: 0, deleted_runs: 0, deleted_screenshots: 0 });
+
+    const flowIds = flows.map(f => f.id);
+    const placeholders = flowIds.map(() => '?').join(',');
+
+    // Get all run IDs for these flows
+    const runRows = db.prepare(`SELECT id FROM runs WHERE flow_id IN (${placeholders})`).all(...flowIds) as { id: number }[];
+    const runIds = runRows.map(r => r.id);
+    let deletedScreenshots = 0;
+
+    if (runIds.length > 0) {
+      const runPlaceholders = runIds.map(() => '?').join(',');
+      const screenshots = db.prepare(`SELECT filename FROM screenshots WHERE run_id IN (${runPlaceholders})`).all(...runIds) as { filename: string }[];
+      const { SCREENSHOTS_DIR } = require('../db');
+      const fs = require('fs');
+      const path = require('path');
+      for (const ss of screenshots) {
+        try { fs.unlinkSync(path.join(SCREENSHOTS_DIR, ss.filename)); } catch {}
+      }
+      for (const runId of runIds) {
+        try { fs.unlinkSync(path.join(SCREENSHOTS_DIR, `live_${runId}.png`)); } catch {}
+      }
+      db.prepare(`DELETE FROM screenshots WHERE run_id IN (${runPlaceholders})`).run(...runIds);
+      deletedScreenshots = screenshots.length;
+    }
+
+    const deletedRuns = runIds.length > 0
+      ? db.prepare(`DELETE FROM runs WHERE flow_id IN (${placeholders})`).run(...flowIds).changes
+      : 0;
+
+    db.prepare(`DELETE FROM flows WHERE id IN (${placeholders})`).run(...flowIds);
+
+    res.json({ deleted_flows: flows.length, deleted_runs: deletedRuns, deleted_screenshots: deletedScreenshots });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
