@@ -109,8 +109,11 @@ async function executeStep(page: Page, step: StepAction, runId: number, stepInde
       break;
     }
     case 'assert_element': {
-      const el = await page.$(step.selector);
-      if (!el) throw new Error(`Element assertion failed. Selector "${step.selector}" not found.`);
+      try {
+        await page.waitForSelector(step.selector, { timeout: 10000 });
+      } catch {
+        throw new Error(`Element assertion failed. Selector "${step.selector}" not found.`);
+      }
       break;
     }
     case 'assert_text': {
