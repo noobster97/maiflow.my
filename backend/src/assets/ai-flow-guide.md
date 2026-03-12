@@ -191,67 +191,105 @@ This confirms the form component rendered with all fields — without creating a
 
 ---
 
-## SECTION 7 — Account Reference Table (maigambar.my)
+## SECTION 7 — Project Reference: Build One for Every App You Test
 
-### Test Accounts
+Every project you test should have its own reference section — a verified map of pages, fields, buttons, accounts, and known gotchas. This eliminates guesswork entirely.
+
+### How to build a project reference
+
+Before generating flows for any project, read the source code and fill in this template:
+
+**Test accounts table:**
+| Email | Password | Role/Plan | Notes |
+|-------|----------|-----------|-------|
+| admin@yourapp.com | pass | Admin | Full access |
+| user@yourapp.com | pass | Free tier | Limited features |
+| paid@yourapp.com | pass | Paid tier | All features |
+
+**Page → field name map (read from source, do NOT guess):**
+| Page | URL | Input `name` attributes | Unique assert_element | Page heading (h1/h2) |
+|------|-----|------------------------|----------------------|---------------------|
+| Login | /login | `email`, `password` | `[name='email']` | — |
+| Register | /register | `name`, `email`, `password` | `[name='name']` | "Create your account" |
+| (your pages) | ... | ... | ... | ... |
+
+**Button text reference (copy exact text from source):**
+| Page | Button text |
+|------|-------------|
+| Login | "Sign In" |
+| (your buttons) | ... |
+
+**Known gotchas (add as you discover them):**
+- Any duplicate mobile/desktop elements
+- Any `name` attributes that conflict with `<meta>` tags
+- Any conditional UI based on plan/role
+
+**For manual payment testing (Stripe/any gateway):**
+Use `{{STRIPE_TEST_EMAIL}}` + `{{STRIPE_TEST_PASSWORD}}` env vars. Change email per run (avoids duplicate registration). Use `wait_for_url` with a long timeout for the manual payment step.
+
+---
+
+### Example Project Reference: maigambar.my
+
+> This is a filled-in reference for maigambar.my — a multi-tenant SaaS for Malaysian photographers. Use this as a model for your own project reference.
+
+**Test Accounts:**
 
 | Email | Password | Plan | Slug | Notes |
 |-------|----------|------|------|-------|
-| demo@maigambar.my | demo1234 | Shooter (active, paid) | rahim-studio | Full features: online payment, promos, travel fee |
-| snapper@maigambar.my | demo1234 | Snapper (active, paid) | snap-studio | Limited: 5 packages max, no online payment |
-| studioon@maigambar.my | demo1234 | Studio On (active, paid) | lumina-studio | All features including branding + staff |
-| trial@maigambar.my | demo1234 | Shooter (14-day trial) | amir-photography | Trial: shows "Choose Your Plan" + "Subscribe Now", no real Stripe sub |
+| demo@maigambar.my | demo1234 | Shooter (paid) | rahim-studio | Full features: online payment, promos, travel fee |
+| snapper@maigambar.my | demo1234 | Snapper (paid) | snap-studio | Limited: 5 packages max, no online payment |
+| studioon@maigambar.my | demo1234 | Studio On (paid) | lumina-studio | All features including branding + staff |
+| trial@maigambar.my | demo1234 | Shooter (trial) | amir-photography | Shows "Choose Your Plan" + "Subscribe Now" |
 | friend@maigambar.my | demo1234 | Shooter (complimentary) | pixel-friends | Free permanent access, no billing |
-| staff@luminastudio.my | demo1234 | Staff role | /staff portal | Can only access /staff, blocked from /dashboard |
+| staff@luminastudio.my | demo1234 | Staff role | /staff portal | Blocked from /dashboard, only /staff |
 | rejected@maigambar.my | demo1234 | None (rejected) | quicksnap-studio | Dashboard blocked |
 | hikayatdevsolutions@gmail.com | Hikayatdev@2025 | Super Admin | /admin | Full admin access |
 
-### Page to Field Name Map (VERIFIED from source code)
+**Page → Field Name Map (verified from source):**
 
-| Page | URL | Key Input Names | Unique Selector | Page Heading |
-|------|-----|-----------------|-----------------|--------------|
+| Page | URL | Key `name` attributes | Unique selector | Heading |
+|------|----|----------------------|-----------------|---------|
 | PackageFormPage (create) | /dashboard/packages/create | `name`, `price`, `duration_hours`, `category`, `textarea[name='description']`, `deposit_amount` | `[name='name']` | "Create New Package" |
-| PackageFormPage (edit) | /dashboard/packages/:id/edit | same as create | `[name='name']` | "Edit Package" |
 | PortfolioFormPage (create) | /dashboard/portfolio/create | `title`, `category`, `textarea[name='description']`, `video_url` | `[name='title']` | "Add New Project" |
-| PortfolioFormPage (edit) | /dashboard/portfolio/:id/edit | same as create | `[name='title']` | "Edit Project" |
 | SettingsPage | /dashboard/settings | `name`, `business_name`, `textarea[name='description']`, `email`, `phone` | `[name='business_name']` | "Settings" |
 | PromotionsPage (modal) | /dashboard/promotions | `name`, `code`, `value`, `max_uses`, `textarea[name='description']` | `[name='code']` | "Promotions" |
-| AvailabilityPage | /dashboard/availability | `date`, `reason` (blocked dates tab) | none unique | "Availability" |
-| SubscriptionPage (trial) | /dashboard/subscription | buttons only | `button:has-text('Subscribe Now')` | "Subscription & Billing" + "Choose Your Plan" |
-| SubscriptionPage (paid) | /dashboard/subscription | buttons only | `button:has-text('Switch to this plan')` | "Subscription & Billing" + "Change Plan" |
-| SubscriptionPage (complimentary) | /dashboard/subscription | none (no action buttons) | none | shows "Complimentary" badge |
-| BookingPage (public) | /p/:slug/book/:packageId | `client_name`, `client_email`, `client_phone`, `location`, `notes` | heading: "Select Date & Time" (Step 1) | Step 1: "Select Date & Time" · Step 2: "Your Details" |
+| SubscriptionPage (trial) | /dashboard/subscription | buttons only | `button:has-text('Subscribe Now')` | "Choose Your Plan" |
+| SubscriptionPage (paid) | /dashboard/subscription | buttons only | `button:has-text('Switch to this plan')` | "Change Plan" |
+| BookingPage (public) | /p/:slug/book/:id | `client_name`, `client_email`, `client_phone`, `notes` | `h2:has-text('Select Date')` | Step 1: "Select Date & Time" |
+| RegisterPage step 1 | /register | `name`, `email`, `phone` | `[name='name']` | "Create your account" |
+| RegisterPage step 2 | /register (same URL) | `business_name`, `password`, `password_confirmation` | `[name='business_name']` | — |
 
-### CRITICAL Gotchas for maigambar.my
-
-- **`[name='description']` in portfolio and packages** → always use `textarea[name='description']` or you will match `<meta name="description">`
-- **`[name='name']` in packages** → safe, no meta conflict
-- **`[name='title']` in portfolio** → safe. Note: PortfolioFormPage uses `title` NOT `name`
-- **Book button on photographer profile** → use `a.flex[href*='/book/']` NOT `a:has-text('Book')`. At 1280px desktop viewport, the mobile button is present in DOM but hidden. `assert_element` will pass on the hidden one. The desktop anchor has class `flex`.
-- **Booking page Step 1 heading** is `"Select Date & Time"` NOT `"Choose Date"` — verify before asserting
-- **Trial subscription** shows `"Choose Your Plan"` + `"Subscribe Now"` (not "Change Plan")
-- **Paid subscription** shows `"Change Plan"` + `"Switch to this plan"` (not "Subscribe Now")
-- **Cancel subscription confirm text**: `"Cancel anyway?"` — appears inline, not in a modal
-- **Plan change dialog text**: `"Switch from [plan] to [plan]? Billing will be prorated."` + button: `"Confirm Switch"`
-- **Staff login** redirects to `/staff` not `/dashboard` — `assert_url contains "/staff"` not `/dashboard`
-- **Snapper plan promotions page** shows `"Promotions Locked"` not a form — do not assert `[name='code']` for snapper
-
-### Button Reference (Exact Text)
+**Button Reference:**
 
 | Page | Button text |
 |------|-------------|
-| Package form | "Save Package" |
-| Portfolio form | "Save Project" |
-| Settings profile | "Save Changes" |
-| Availability business hours | "Save Schedule" |
-| Availability blocked dates | "Block Date" |
-| Promotions (open modal) | "New Promotion" |
-| Promotions (submit modal) | "Create Promotion" |
-| Promotions (close modal) | "Cancel" |
+| Register step 1 → step 2 | "Continue" |
+| Register step 2 submit | "Create Account" |
+| Package form submit | "Save Package" |
+| Portfolio form submit | "Save Project" |
+| Settings profile save | "Save Changes" |
+| Availability hours save | "Save Schedule" |
+| Availability block date | "Block Date" |
+| Promotions open modal | "New Promotion" |
+| Promotions modal submit | "Create Promotion" |
 | Subscription (trial) | "Subscribe Now" |
-| Subscription (paid, other plan) | "Switch to this plan" |
+| Subscription (paid, other) | "Switch to this plan" |
 | Subscription cancel confirm | "Yes, cancel" · "Keep subscription" |
-| Subscription plan switch confirm | "Confirm Switch" · "Cancel" |
+| Subscription switch confirm | "Confirm Switch" · "Cancel" |
+| Admin tenant approve | "Approve Identity" |
+
+**Known Gotchas:**
+
+- `[name='description']` → always use `textarea[name='description']` — `<meta name="description">` exists on every page
+- `[name='title']` in portfolio → correct. PortfolioFormPage uses `title` NOT `name`
+- Book button → use `a.flex[href*='/book/']` NOT `a:has-text('Book')`. Mobile button hidden at 1280px desktop viewport is matched first otherwise.
+- Booking Step 1 heading is `"Select Date & Time"` NOT `"Choose Date"`
+- Trial subscription → `"Choose Your Plan"` + `"Subscribe Now"` (trial treated as active Shooter by API but no real Stripe sub)
+- Paid subscription → `"Change Plan"` + `"Switch to this plan"`
+- Cancel confirm text: `"Cancel anyway?"` — appears inline, not in a modal
+- Staff login redirects to `/staff` not `/dashboard`
+- Snapper plan shows `"Promotions Locked"` — no promo form fields exist for this plan
 
 ---
 
@@ -343,6 +381,27 @@ Assert the current URL contains a substring.
 ```json
 { "action": "assert_url", "contains": "/dashboard" }
 { "action": "assert_url", "contains": "success" }
+```
+
+### wait_for_url
+Wait until the current URL contains a substring, polling every 1 second. Use for payment redirects or external OAuth flows where the user performs a manual action (e.g., completing Stripe checkout) before returning to your app.
+
+```json
+{ "action": "wait_for_url", "contains": "/dashboard", "timeout": 300000 }
+```
+- `contains` — substring to wait for in the URL
+- `timeout` — max wait in milliseconds (default: 120000ms = 2 min). For manual Stripe payment: use 300000 (5 min).
+- Fails with clear error if timeout exceeded without URL match
+- Unlike `wait ms`, this resumes immediately when the URL matches — no unnecessary delay
+
+**Use case — Manual Stripe payment flow:**
+```json
+{ "action": "click", "selector": "button:has-text('Subscribe Now')" },
+{ "action": "wait", "ms": 5000 },
+{ "action": "assert_url", "contains": "stripe.com" },
+{ "action": "wait_for_url", "contains": "/dashboard/subscription", "timeout": 300000 },
+{ "action": "wait", "ms": 3000 },
+{ "action": "assert_text", "selector": "body", "contains": "Subscription activated!" }
 ```
 
 ### assert_element

@@ -71,6 +71,7 @@ function describeStep(step: StepAction, index: number, total: number): string {
     case 'screenshot':     return `Step ${index + 1}/${total}: Screenshot "${step.name}"`;
     case 'upload_file':    return `Step ${index + 1}/${total}: Upload file to ${step.selector}`;
     case 'extract':        return `Step ${index + 1}/${total}: Extract "${step.selector}" → {{${step.varName}}}`;
+    case 'wait_for_url':   return `Step ${index + 1}/${total}: Wait for URL to contain "${step.contains}" (up to ${Math.round((step.timeout || 120000) / 1000)}s)`;
     default:               return `Step ${index + 1}/${total}`;
   }
 }
@@ -106,6 +107,23 @@ async function executeStep(page: Page, step: StepAction, runId: number, stepInde
       const url = page.url();
       if (!url.includes(step.contains))
         throw new Error(`URL assertion failed. Expected URL to contain "${step.contains}", got "${url}"`);
+      break;
+    }
+    case 'wait_for_url': {
+      const timeout = step.timeout || 120000;
+      const interval = 1000;
+      const start = Date.now();
+      let found = false;
+      while (Date.now() - start < timeout) {
+        if (page.url().includes(step.contains)) {
+          found = true;
+          break;
+        }
+        await new Promise(r => setTimeout(r, interval));
+      }
+      if (!found) {
+        throw new Error(`wait_for_url timed out after ${timeout}ms. Expected URL to contain "${step.contains}", got "${page.url()}"`);
+      }
       break;
     }
     case 'assert_element': {
