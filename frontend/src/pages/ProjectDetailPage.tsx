@@ -90,6 +90,7 @@ export default function ProjectDetailPage() {
   const [filterStatus, setFilterStatus]     = useState<FlowFilter>('all');
   const [sortBy, setSortBy]                 = useState<FlowSort>('default');
   const [runningFailed, setRunningFailed]   = useState(false);
+  const [runningNever,  setRunningNever]    = useState(false);
 
   // Recorder
   const [recordingSessionId, setRecordingSessionId] = useState<string | null>(null);
@@ -192,7 +193,7 @@ export default function ProjectDetailPage() {
     try {
       await runsApi.stopAll(parseInt(id));
       notify('Stopped all runs.');
-      setTimeout(loadFlows, 500);
+      setTimeout(loadFlows, 1500);
     } finally { setStoppingAll(false); }
   };
 
@@ -325,6 +326,18 @@ export default function ProjectDetailPage() {
     } catch (err: any) {
       notify(err.response?.data?.error || 'Failed to queue runs.', 'err');
     } finally { setRunningFailed(false); }
+  };
+
+  const handleRunNeverRun = async () => {
+    if (!id) return;
+    setRunningNever(true);
+    try {
+      const result = await runsApi.runNeverRun(parseInt(id));
+      notify(`Queued ${result.run_ids.length} never-run flow${result.run_ids.length !== 1 ? 's' : ''}.`);
+      setTimeout(loadFlows, 800);
+    } catch (err: any) {
+      notify(err.response?.data?.error || 'Failed to queue runs.', 'err');
+    } finally { setRunningNever(false); }
   };
 
   const filteredFlows = useMemo(() => {
@@ -595,6 +608,11 @@ export default function ProjectDetailPage() {
           {flows.length > 0 && !anyRunning && flows.some(f => f.runs[0]?.status === 'failed') && (
             <button onClick={handleRunFailed} disabled={runningFailed} className="btn btn-warning btn-sm">
               {runningFailed ? 'Queuing…' : `↺ Run Failed (${flows.filter(f => f.runs[0]?.status === 'failed').length})`}
+            </button>
+          )}
+          {flows.length > 0 && !anyRunning && flows.some(f => !f.runs || f.runs.length === 0) && (
+            <button onClick={handleRunNeverRun} disabled={runningNever} className="btn btn-ghost btn-sm">
+              {runningNever ? 'Queuing…' : `▷ Run New (${flows.filter(f => !f.runs || f.runs.length === 0).length})`}
             </button>
           )}
           {anyRunning && (

@@ -134,7 +134,7 @@ async function executeStep(page: Page, step: StepAction, runId: number, stepInde
       if (!resp.ok) throw new Error(`upload_file: failed to fetch "${fileUrl}" (${resp.status})`);
       const buffer = Buffer.from(await resp.arrayBuffer());
       fs.writeFileSync(tempPath, buffer);
-      await page.waitForSelector(step.selector, { timeout: 10000 });
+      await page.waitForSelector(step.selector, { state: 'attached', timeout: 10000 });
       await page.setInputFiles(step.selector, tempPath);
       break;
     }

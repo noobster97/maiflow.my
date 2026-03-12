@@ -72,6 +72,13 @@ Self-hosted E2E browser automation testing platform. Define test flows, run them
 - `flows-maigambar.json` rewrite: 44 flows, correct assertion texts, wait steps after navigates
 - Settings: removed duplicate "Clear Run Data" (moved to toolbar as "🧹 Clear History")
 
+### Session 7 — 2026-03-13
+- Stop All fix: frontend reload timeout 500ms → 1500ms (gives browser process time to fully close)
+- `upload_file` runner fix: `waitForSelector` now uses `{ state: 'attached' }` — file inputs are `display:none`, visibility check was always timing out
+- flows-maigambar-crud.json: 17 targeted fixes — SPA timing (2000→3000ms on form pages), `textarea[name='description']` to avoid `<meta>` tag collision, `a[href*='/book/']` replaces text-match selector, hidden file input compatibility
+- maigambar.my seeder: `bio` → `description` column fix, auto-configure ToyyibPay/Chip payment from `.env` vars
+- `.env` + `.env.example` (maigambar.my): added `TOYYIBPAY_SECRET`, `TOYYIBPAY_CATEGORY_CODE`, `CHIP_BRAND_ID`, `CHIP_SECRET_KEY`
+
 ### Session 6 — 2026-03-13
 - Dashboard: stat cards updated to "last 100 runs", added Project Health section (per-project pass/fail counts, mini progress bar, colored left border, clickable to project)
 - ProjectDetailPage: filter by status (All/Failed/Passed/Running/Never Run), sort by (Latest/Name/Pass Rate/Duration), "↺ Run Failed (N)" button to re-run only failed flows

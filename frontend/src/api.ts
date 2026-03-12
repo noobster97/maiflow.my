@@ -94,7 +94,8 @@ export const runsApi = {
   trigger: (flowId: number) => api.post<{ run_id: number }>(`/runs/flow/${flowId}/run`).then(r => r.data),
   cancel: (id: number) => api.post(`/runs/${id}/cancel`).then(r => r.data),
   runAll: (projectId: number) => api.post<{ message: string; run_ids: number[] }>(`/runs/project/${projectId}/run-all`).then(r => r.data),
-  runFailed: (projectId: number) => api.post<{ message: string; run_ids: number[] }>(`/runs/project/${projectId}/run-failed`).then(r => r.data),
+  runFailed:   (projectId: number) => api.post<{ message: string; run_ids: number[] }>(`/runs/project/${projectId}/run-failed`).then(r => r.data),
+  runNeverRun: (projectId: number) => api.post<{ message: string; run_ids: number[] }>(`/runs/project/${projectId}/run-never-run`).then(r => r.data),
   stopAll: (projectId: number) => api.post(`/runs/project/${projectId}/stop-all`).then(r => r.data),
   recent: (limit?: number) => api.get<Run[]>(`/runs/recent/${limit || 20}`).then(r => r.data),
 };

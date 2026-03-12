@@ -142,31 +142,66 @@ router.post('/project/:projectId/run-failed', async (req, res) => {
   }
 });
 
-// Stop all — cancel current run + drain the queue
+router.post('/project/:projectId/run-never-run', async (req, res) => {
+  try {
+    const projectId = parseInt(req.params.projectId);
+    const neverRunFlows = db.prepare(`
+      SELECT f.* FROM flows f
+      LEFT JOIN runs r ON r.flow_id = f.id
+      WHERE f.project_id = ? AND r.id IS NULL
+    `).all(projectId) as any[];
+
+    if (neverRunFlows.length === 0) return res.status(400).json({ error: 'No unrun flows found' });
+
+    const pairs: { flowId: number; runId: number }[] = [];
+    for (const flow of neverRunFlows) {
+      const activeRun = db.prepare(`SELECT id FROM runs WHERE flow_id = ? AND status IN ('running', 'pending')`).get(flow.id);
+      if (activeRun) continue;
+      const result = db.prepare('INSERT INTO runs (flow_id) VALUES (?)').run(flow.id);
+      pairs.push({ flowId: flow.id, runId: Number(result.lastInsertRowid) });
+    }
+
+    if (pairs.length === 0) return res.status(409).json({ error: 'All unrun flows already have active runs.' });
+
+    runFlowsSequential(projectId, pairs).catch(console.error);
+    res.status(202).json({ message: `Queued ${pairs.length} never-run flows (sequential)`, run_ids: pairs.map(p => p.runId) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Stop all — cancel current run + immediately fail all pending runs
 router.post('/project/:projectId/stop-all', (req, res) => {
   try {
     const projectId = parseInt(req.params.projectId);
 
-    // Stop the queue so pending runs don't start
+    // Stop the queue so no new runs start
     cancelProjectQueue(projectId);
 
-    // Cancel any currently running run in this project
-    const activeRun = db.prepare(`
-      SELECT r.id FROM runs r
+    // Get ALL active runs (running + pending) for this project
+    const allActive = db.prepare(`
+      SELECT r.id, r.status FROM runs r
       JOIN flows f ON r.flow_id = f.id
       WHERE f.project_id = ? AND r.status IN ('running', 'pending')
-      ORDER BY r.id DESC LIMIT 1
-    `).get(projectId) as any;
+    `).all(projectId) as any[];
 
-    if (activeRun) {
-      const cancelled = cancelRun(activeRun.id);
-      if (!cancelled) {
+    for (const run of allActive) {
+      if (run.status === 'running') {
+        // Try to kill the browser/process via the active runs map
+        const killed = cancelRun(run.id);
+        if (!killed) {
+          // Not in map (edge case) — force fail via DB directly
+          db.prepare(`UPDATE runs SET status = 'failed', error_message = 'Stopped by user.', finished_at = CURRENT_TIMESTAMP WHERE id = ?`)
+            .run(run.id);
+        }
+      } else {
+        // Pending — mark failed immediately, don't wait for queue loop
         db.prepare(`UPDATE runs SET status = 'failed', error_message = 'Stopped by user.', finished_at = CURRENT_TIMESTAMP WHERE id = ?`)
-          .run(activeRun.id);
+          .run(run.id);
       }
     }
 
-    res.json({ success: true });
+    res.json({ success: true, stopped: allActive.length });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
