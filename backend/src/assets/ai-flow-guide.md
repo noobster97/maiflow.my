@@ -199,14 +199,14 @@ Every project you test should have its own reference section — a verified map 
 
 Before generating flows for any project, read the source code and fill in this template:
 
-**Test accounts — define as env_vars, reference with `{{VAR_NAME}}`:**
-| Env Var | Role/Plan | Notes |
-|---------|-----------|-------|
-| `{{ADMIN_EMAIL}}` / `{{ADMIN_PASSWORD}}` | Admin | Full access |
-| `{{FREE_EMAIL}}` / `{{FREE_PASSWORD}}` | Free tier | Limited features |
-| `{{PAID_EMAIL}}` / `{{PAID_PASSWORD}}` | Paid tier | All features |
+**Test accounts — hardcode directly in the flow JSON:**
+| Role/Plan | Notes |
+|-----------|-------|
+| Admin | Full access |
+| Free tier | Limited features |
+| Paid tier | All features |
 
-> Never hardcode credentials in the flow JSON. Define them in maiflow.my project env_vars and reference with `{{VAR_NAME}}`. This keeps credentials out of version control and out of the guide.
+> Credentials belong in the flow JSON itself — not in this guide. The guide is instruction-only. What test accounts exist, what their passwords are, which flows use which account — that is all project-specific and goes directly in the flow file.
 
 **Page → field name map (read from source, do NOT guess):**
 | Page | URL | Input `name` attributes | Unique assert_element | Page heading (h1/h2) |
@@ -235,20 +235,20 @@ Use `{{STRIPE_TEST_EMAIL}}` + `{{STRIPE_TEST_PASSWORD}}` env vars. Change email 
 
 > This is a filled-in reference for maigambar.my — a multi-tenant SaaS for Malaysian photographers. Use this as a model for your own project reference.
 
-**Test Accounts (env_vars — set in maiflow.my project settings):**
+**Test Accounts (hardcoded directly in flow JSON — see your flows file for actual values):**
 
-| Env Var | Plan | Slug | Notes |
-|---------|------|------|-------|
-| `{{SHOOTER_EMAIL}}` / `{{SHOOTER_PASSWORD}}` | Shooter (paid) | rahim-studio | Full features: online payment, promos, travel fee |
-| `{{SNAPPER_EMAIL}}` / `{{SNAPPER_PASSWORD}}` | Snapper (paid) | snap-studio | Limited: 5 packages max, no online payment |
-| `{{STUDIO_EMAIL}}` / `{{STUDIO_PASSWORD}}` | Studio On (paid) | lumina-studio | All features including branding + staff |
-| `{{TRIAL_EMAIL}}` / `{{TRIAL_PASSWORD}}` | Shooter (trial) | amir-photography | Shows "Choose Your Plan" + "Subscribe Now" |
-| `{{FRIEND_EMAIL}}` / `{{FRIEND_PASSWORD}}` | Shooter (complimentary) | pixel-friends | Free permanent access, no billing |
-| `{{STAFF_EMAIL}}` / `{{STAFF_PASSWORD}}` | Staff role | /staff portal | Blocked from /dashboard, only /staff |
-| `{{REJECTED_EMAIL}}` / `{{REJECTED_PASSWORD}}` | None (rejected) | quicksnap-studio | Dashboard blocked |
-| `{{ADMIN_EMAIL}}` / `{{ADMIN_PASSWORD}}` | Super Admin | /admin | Full admin access |
+| Plan | Slug | Notes |
+|------|------|-------|
+| Shooter (paid) | rahim-studio | Full features: online payment, promos, travel fee |
+| Snapper (paid) | snap-studio | Limited: 5 packages max, no online payment |
+| Studio On (paid) | lumina-studio | All features including branding + staff |
+| Shooter (trial) | amir-photography | Shows "Choose Your Plan" + "Subscribe Now" |
+| Shooter (complimentary) | pixel-friends | Free permanent access, no billing |
+| Staff role | /staff portal | Blocked from /dashboard, only /staff |
+| None (rejected) | quicksnap-studio | Dashboard blocked |
+| Super Admin | /admin | Full admin access |
 
-> Actual credential values are stored in maiflow.my project env_vars only — never in the flow JSON file.
+> Credentials go directly in the flow JSON file. This guide does not contain any credentials — it is instruction-only.
 
 **Page → Field Name Map (verified from source):**
 
@@ -487,8 +487,9 @@ Reference env_vars with `{{VAR_NAME}}`:
 
 Common env_vars:
 - `BASE_URL` — auto-applied when navigating relative paths
-- `ADMIN_EMAIL`, `ADMIN_PASSWORD` — test user credentials
 - Any custom variable defined in the project settings
+
+> env_vars are optional. For test credentials and project-specific data, you can hardcode values directly in the flow JSON instead. env_vars are useful when the same value changes between environments (e.g. staging vs production base URL).
 
 ---
 
@@ -502,8 +503,8 @@ These three flows demonstrate all best practices: verified selectors, correct wa
     "name": "Auth — Login Success (Shooter)",
     "steps": [
       { "action": "navigate", "url": "/login" },
-      { "action": "fill", "selector": "#email", "value": "{{SHOOTER_EMAIL}}" },
-      { "action": "fill", "selector": "#password", "value": "{{SHOOTER_PASSWORD}}" },
+      { "action": "fill", "selector": "#email", "value": "demo@maigambar.my" },
+      { "action": "fill", "selector": "#password", "value": "demo1234" },
       { "action": "click", "selector": "[type='submit']" },
       { "action": "wait", "ms": 2000 },
       { "action": "assert_url", "contains": "/dashboard" },
@@ -514,8 +515,8 @@ These three flows demonstrate all best practices: verified selectors, correct wa
     "name": "Packages — Create Form Renders Correctly",
     "steps": [
       { "action": "navigate", "url": "/login" },
-      { "action": "fill", "selector": "#email", "value": "{{SHOOTER_EMAIL}}" },
-      { "action": "fill", "selector": "#password", "value": "{{SHOOTER_PASSWORD}}" },
+      { "action": "fill", "selector": "#email", "value": "demo@maigambar.my" },
+      { "action": "fill", "selector": "#password", "value": "demo1234" },
       { "action": "click", "selector": "[type='submit']" },
       { "action": "wait", "ms": 2000 },
       { "action": "assert_url", "contains": "/dashboard" },
@@ -534,9 +535,9 @@ These three flows demonstrate all best practices: verified selectors, correct wa
   {
     "name": "Public Booking — Step 1 Renders (Shooter profile)",
     "steps": [
-      { "action": "navigate", "url": "/p/{{SHOOTER_SLUG}}" },
+      { "action": "navigate", "url": "/p/rahim-studio" },
       { "action": "wait", "ms": 2000 },
-      { "action": "assert_url", "contains": "/p/{{SHOOTER_SLUG}}" },
+      { "action": "assert_url", "contains": "/p/rahim-studio" },
       { "action": "assert_element", "selector": "a.flex[href*='/book/']" },
       { "action": "click", "selector": "a.flex[href*='/book/']" },
       { "action": "wait", "ms": 3000 },
