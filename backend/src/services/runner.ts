@@ -69,6 +69,8 @@ function describeStep(step: StepAction, index: number, total: number): string {
     case 'assert_element': return `Step ${index + 1}/${total}: Assert element exists ${step.selector}`;
     case 'assert_text':    return `Step ${index + 1}/${total}: Assert text "${step.contains}"`;
     case 'screenshot':     return `Step ${index + 1}/${total}: Screenshot "${step.name}"`;
+    case 'upload_file':    return `Step ${index + 1}/${total}: Upload file to ${step.selector}`;
+    case 'extract':        return `Step ${index + 1}/${total}: Extract "${step.selector}" → {{${step.varName}}}`;
     default:               return `Step ${index + 1}/${total}`;
   }
 }
@@ -122,6 +124,28 @@ async function executeStep(page: Page, step: StepAction, runId: number, stepInde
       const filename = `run_${runId}_step_${stepIndex}_${safeName}.png`;
       await page.screenshot({ path: path.join(SCREENSHOTS_DIR, filename), fullPage: false });
       db.prepare(`INSERT INTO screenshots (run_id, filename, label) VALUES (?, ?, ?)`).run(runId, filename, step.name);
+      break;
+    }
+    case 'upload_file': {
+      const fileUrl = substituteEnvVars(step.url, envVars);
+      const safeName = (step.filename || `upload_${runId}_${stepIndex}`).replace(/[^a-zA-Z0-9_.\-]/g, '_');
+      const tempPath = path.join(TEMP_DIR, safeName);
+      const resp = await fetch(fileUrl);
+      if (!resp.ok) throw new Error(`upload_file: failed to fetch "${fileUrl}" (${resp.status})`);
+      const buffer = Buffer.from(await resp.arrayBuffer());
+      fs.writeFileSync(tempPath, buffer);
+      await page.waitForSelector(step.selector, { timeout: 10000 });
+      await page.setInputFiles(step.selector, tempPath);
+      break;
+    }
+    case 'extract': {
+      let value = '';
+      if (step.attribute) {
+        value = await page.$eval(step.selector, (el: any, attr: string) => el.getAttribute(attr) || '', step.attribute).catch(() => '');
+      } else {
+        value = (await page.textContent(step.selector, { timeout: 8000 }).catch(() => '')) || '';
+      }
+      envVars[step.varName] = value.trim();
       break;
     }
   }
@@ -330,7 +354,7 @@ export async function runFlow(flowId: number, runId: number, isRetry = false): P
       .run(Date.now() - startTime, runId);
 
   } catch (err: any) {
-    clearTimeout(timeoutHandle);
+    if (timeoutHandle) clearTimeout(timeoutHandle);
     if (cancelled) return;
     const duration = Date.now() - startTime;
     try {

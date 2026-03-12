@@ -113,6 +113,35 @@ router.post('/project/:projectId/run-all', async (req, res) => {
   }
 });
 
+// Run only FAILED flows for a project — sequentially
+router.post('/project/:projectId/run-failed', async (req, res) => {
+  try {
+    const projectId = parseInt(req.params.projectId);
+    const failedFlows = db.prepare(`
+      SELECT f.* FROM flows f
+      JOIN runs r ON r.id = (SELECT MAX(id) FROM runs WHERE flow_id = f.id)
+      WHERE f.project_id = ? AND r.status = 'failed'
+    `).all(projectId) as any[];
+
+    if (failedFlows.length === 0) return res.status(400).json({ error: 'No failed flows to re-run' });
+
+    const pairs: { flowId: number; runId: number }[] = [];
+    for (const flow of failedFlows) {
+      const activeRun = db.prepare(`SELECT id FROM runs WHERE flow_id = ? AND status IN ('running', 'pending')`).get(flow.id);
+      if (activeRun) continue;
+      const result = db.prepare('INSERT INTO runs (flow_id) VALUES (?)').run(flow.id);
+      pairs.push({ flowId: flow.id, runId: Number(result.lastInsertRowid) });
+    }
+
+    if (pairs.length === 0) return res.status(409).json({ error: 'All failed flows already have active runs.' });
+
+    runFlowsSequential(projectId, pairs).catch(console.error);
+    res.status(202).json({ message: `Queued ${pairs.length} failed flows (sequential)`, run_ids: pairs.map(p => p.runId) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Stop all — cancel current run + drain the queue
 router.post('/project/:projectId/stop-all', (req, res) => {
   try {

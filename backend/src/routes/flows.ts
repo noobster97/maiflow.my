@@ -1,7 +1,18 @@
 import { Router } from 'express';
+import path from 'path';
+import fs from 'fs';
 import db from '../db';
 
 const router = Router();
+
+// Download AI guide — comprehensive markdown instructions for AI agents to generate flow JSON
+router.get('/ai-guide', (req, res) => {
+  const guidePath = path.join(__dirname, '..', 'assets', 'ai-flow-guide.md');
+  if (!fs.existsSync(guidePath)) return res.status(404).json({ error: 'Guide file not found' });
+  res.setHeader('Content-Disposition', 'attachment; filename="maiflow-ai-guide.md"');
+  res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+  res.send(fs.readFileSync(guidePath, 'utf-8'));
+});
 
 // Download template JSON — user gives this to Claude to fill in
 router.get('/template', (req, res) => {

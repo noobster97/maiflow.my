@@ -21,6 +21,8 @@ const ACTION_TYPES = [
   { value: 'assert_element', label: 'Assert Element',  icon: '⊕', color: 'var(--success)' },
   { value: 'assert_text',    label: 'Assert Text',     icon: '⊕', color: 'var(--success)' },
   { value: 'screenshot',     label: 'Screenshot',      icon: '⬜', color: '#F472B6' },
+  { value: 'upload_file',   label: 'Upload File',     icon: '↑',  color: '#FB923C' },
+  { value: 'extract',       label: 'Extract Value',   icon: '⊗',  color: '#34D399' },
 ];
 
 function ActionIcon({ action }: { action: string }) {
@@ -68,6 +70,20 @@ function StepFields({ step, onChange }: { step: Step; onChange: (s: Step) => voi
       );
     case 'screenshot':
       return <input style={inputStyle} placeholder="Screenshot name · after-login" value={step.name || ''} onChange={e => onChange({ ...step, name: e.target.value })} onFocus={onFocus} onBlur={onBlur} />;
+    case 'upload_file':
+      return (
+        <>
+          <input style={inputStyle} placeholder="File input selector · input[type='file']" value={step.selector || ''} onChange={e => onChange({ ...step, selector: e.target.value })} onFocus={onFocus} onBlur={onBlur} />
+          <input style={inputStyle} placeholder="File URL to download & upload" value={step.url || ''} onChange={e => onChange({ ...step, url: e.target.value })} onFocus={onFocus} onBlur={onBlur} />
+        </>
+      );
+    case 'extract':
+      return (
+        <>
+          <input style={inputStyle} placeholder="CSS selector to read" value={step.selector || ''} onChange={e => onChange({ ...step, selector: e.target.value })} onFocus={onFocus} onBlur={onBlur} />
+          <input style={inputStyle} placeholder="Variable name · myVar (use as {{myVar}})" value={step.varName || ''} onChange={e => onChange({ ...step, varName: e.target.value })} onFocus={onFocus} onBlur={onBlur} />
+        </>
+      );
     default:
       return null;
   }

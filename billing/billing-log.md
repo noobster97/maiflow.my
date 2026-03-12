@@ -7,3 +7,4 @@
 | 3 | 2026-03-10 | — | RM100/hr | — | Scheduled runs, cancel, retry, clone, dark UI overhaul, N+1 fix, cleanup |
 | 4 | 2026-03-10 | — | RM100/hr | — | Flow detail page, dashboard overhaul, clear history/flows buttons, GitHub push |
 | 5 | 2026-03-11 | — | RM100/hr | — | Sequential runs, stop all, headless toggle, timeout, webhook, env vars, flow ordering, CSV export, queue indicator, timezone fix, SPA timing fix, stuck run safety net, timeoutHandle scope fix |
+| 6 | 2026-03-13 | — | RM100/hr | — | Dashboard Project Health, filter/sort/Run-Failed in ProjectDetailPage, Phase 2 upload_file, Phase 3 extract + runtime vars, AI Guide download, remove Template button, CRUD flows for maigambar.my |

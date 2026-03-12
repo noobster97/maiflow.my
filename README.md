@@ -72,6 +72,17 @@ Self-hosted E2E browser automation testing platform. Define test flows, run them
 - `flows-maigambar.json` rewrite: 44 flows, correct assertion texts, wait steps after navigates
 - Settings: removed duplicate "Clear Run Data" (moved to toolbar as "🧹 Clear History")
 
+### Session 6 — 2026-03-13
+- Dashboard: stat cards updated to "last 100 runs", added Project Health section (per-project pass/fail counts, mini progress bar, colored left border, clickable to project)
+- ProjectDetailPage: filter by status (All/Failed/Passed/Running/Never Run), sort by (Latest/Name/Pass Rate/Duration), "↺ Run Failed (N)" button to re-run only failed flows
+- Phase 2 — `upload_file` step action: downloads file from URL to temp, sets on `<input type="file">` via Playwright
+- Phase 3 — `extract` step action: reads DOM text/attribute → stores as runtime variable → usable as `{{varName}}` in later steps
+- AI Guide: comprehensive markdown instruction file for AI agents to generate flow JSON for any project. `GET /api/flows/ai-guide` download endpoint + "⬇ AI Guide" button in toolbar
+- Removed Template button (AI Guide supersedes it)
+- Fixed pre-existing `Timeout | null` TypeScript error in runner.ts catch block
+- maigambar.my 401 interceptor bug fixed: wrong-password login no longer triggers redirect to /login
+- flows-maigambar-crud.json: 30 Phase 1 CRUD flows (Packages, Settings, Availability, Promotions, Bookings, Clients, Subscription, Portfolio, Reviews, Public booking, Dashboard, Business Guide, Staff)
+
 ### Session 4 — 2026-03-10
 - Flow detail page `/flows/:id` — breadcrumb, stats (pass rate, total runs, avg duration, last status), SVG pass rate bar chart, run history table, steps tab
 - Dashboard overhaul — stat cards with glow blobs, colored left-border run rows, improved empty state

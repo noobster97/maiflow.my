@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { runsApi, Run } from '../api';
+import { runsApi, projectsApi, Run, Project } from '../api';
 import StatusBadge from '../components/StatusBadge';
 
 function parseUtc(d: string): Date {
@@ -52,14 +52,19 @@ function SkeletonRow() {
 type Filter = 'all' | 'passed' | 'failed' | 'running';
 
 export default function Dashboard() {
-  const [runs, setRuns] = useState<Run[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<Filter>('all');
+  const [runs, setRuns]         = useState<Run[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [filter, setFilter]     = useState<Filter>('all');
 
   const load = async () => {
     try {
-      const data = await runsApi.recent(30);
-      setRuns(data);
+      const [runsData, projectsData] = await Promise.all([
+        runsApi.recent(100),
+        projectsApi.list(),
+      ]);
+      setRuns(runsData);
+      setProjects(projectsData);
     } finally {
       setLoading(false);
     }
@@ -89,10 +94,66 @@ export default function Dashboard() {
 
       {/* Stats */}
       <div className="stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 28 }}>
-        <StatCard label="Passed (last 30)" value={passed} color="var(--success)" icon="✅" />
-        <StatCard label="Failed (last 30)"  value={failed}  color="var(--error)"   icon="❌" />
+        <StatCard label="Passed (last 100)" value={passed} color="var(--success)" icon="✅" />
+        <StatCard label="Failed (last 100)"  value={failed}  color="var(--error)"   icon="❌" />
         <StatCard label="Running now"        value={running} color="var(--running)" icon="⚡" />
       </div>
+
+      {/* Project Health */}
+      {projects.length > 0 && (
+        <div style={{ marginBottom: 28 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 10 }}>Project Health</div>
+          <div className="card" style={{ overflow: 'hidden' }}>
+            {projects.map((p, i) => {
+              const total   = p.total_flows   ?? 0;
+              const passing = p.passing_flows ?? 0;
+              const failing = p.failing_flows ?? 0;
+              const other   = total - passing - failing;
+              const pct     = total > 0 ? Math.round((passing / total) * 100) : null;
+              return (
+                <Link key={p.id} to={`/projects/${p.id}`} style={{ textDecoration: 'none', display: 'block' }}>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 14,
+                    padding: '11px 20px',
+                    borderBottom: i < projects.length - 1 ? '1px solid var(--border)' : 'none',
+                    borderLeft: `3px solid ${failing > 0 ? 'var(--error)' : passing === total && total > 0 ? 'var(--success)' : 'var(--border)'}`,
+                    transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.025)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 2 }}>
+                        {total === 0 ? 'No flows' : (
+                          <>
+                            <span style={{ color: 'var(--success)' }}>{passing} passed</span>
+                            {failing > 0 && <> · <span style={{ color: 'var(--error)' }}>{failing} failed</span></>}
+                            {other > 0 && <> · <span>{other} pending/running</span></>}
+                            <span> · {total} total</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    {pct !== null && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                        <div style={{ width: 72, height: 5, borderRadius: 3, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                          <div style={{
+                            height: '100%', width: `${pct}%`,
+                            background: pct === 100 ? 'var(--success)' : pct === 0 ? 'var(--error)' : 'linear-gradient(90deg, var(--error), var(--success))',
+                            transition: 'width 0.4s ease',
+                          }} />
+                        </div>
+                        <span className="mono" style={{ fontSize: 11, color: pct === 100 ? 'var(--success)' : pct === 0 ? 'var(--error)' : 'var(--warning)', minWidth: 32, textAlign: 'right' }}>{pct}%</span>
+                      </div>
+                    )}
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Header + filter */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>

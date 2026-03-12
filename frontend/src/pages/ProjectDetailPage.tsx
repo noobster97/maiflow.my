@@ -1,6 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { projectsApi, flowsApi, runsApi, recorderApi, Project, Flow, Run } from '../api';
+
+type FlowFilter = 'all' | 'passed' | 'failed' | 'running' | 'never';
+type FlowSort   = 'default' | 'failed_first' | 'pass_rate_asc' | 'alpha';
 import StatusBadge from '../components/StatusBadge';
 import FlowBuilder from '../components/FlowBuilder';
 
@@ -84,6 +87,9 @@ export default function ProjectDetailPage() {
   const [clearConfirm, setClearConfirm]     = useState(false);
   const [clearingFlows, setClearingFlows]   = useState(false);
   const [clearFlowsConfirm, setClearFlowsConfirm] = useState(false);
+  const [filterStatus, setFilterStatus]     = useState<FlowFilter>('all');
+  const [sortBy, setSortBy]                 = useState<FlowSort>('default');
+  const [runningFailed, setRunningFailed]   = useState(false);
 
   // Recorder
   const [recordingSessionId, setRecordingSessionId] = useState<string | null>(null);
@@ -308,6 +314,39 @@ export default function ProjectDetailPage() {
       notify(`Deleted ${result.deleted_flows} flows, ${result.deleted_runs} runs, ${result.deleted_screenshots} screenshots.`);
     } finally { setClearingFlows(false); }
   };
+
+  const handleRunFailed = async () => {
+    if (!id) return;
+    setRunningFailed(true);
+    try {
+      const result = await runsApi.runFailed(parseInt(id));
+      notify(`Re-running ${result.run_ids.length} failed flow${result.run_ids.length !== 1 ? 's' : ''}.`);
+      setTimeout(loadFlows, 800);
+    } catch (err: any) {
+      notify(err.response?.data?.error || 'Failed to queue runs.', 'err');
+    } finally { setRunningFailed(false); }
+  };
+
+  const filteredFlows = useMemo(() => {
+    let result = [...flows];
+    if (filterStatus !== 'all') {
+      result = result.filter(f => {
+        const s = f.runs[0]?.status;
+        if (filterStatus === 'never')   return f.runs.length === 0;
+        if (filterStatus === 'running') return s === 'running' || s === 'pending';
+        return s === filterStatus;
+      });
+    }
+    if (sortBy === 'failed_first') {
+      const ORDER: Record<string, number> = { failed: 0, running: 1, pending: 1, passed: 2 };
+      result.sort((a, b) => (ORDER[a.runs[0]?.status ?? ''] ?? 3) - (ORDER[b.runs[0]?.status ?? ''] ?? 3));
+    } else if (sortBy === 'pass_rate_asc') {
+      result.sort((a, b) => (passRate(a.runs)?.pct ?? -1) - (passRate(b.runs)?.pct ?? -1));
+    } else if (sortBy === 'alpha') {
+      result.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return result;
+  }, [flows, filterStatus, sortBy]);
 
   const handleReorder = async (flowId: number, direction: 'up' | 'down') => {
     const idx = flows.findIndex(f => f.id === flowId);
@@ -553,6 +592,11 @@ export default function ProjectDetailPage() {
               {runningAll ? 'Queuing…' : `▶▶ Run All (${flows.length})`}
             </button>
           )}
+          {flows.length > 0 && !anyRunning && flows.some(f => f.runs[0]?.status === 'failed') && (
+            <button onClick={handleRunFailed} disabled={runningFailed} className="btn btn-warning btn-sm">
+              {runningFailed ? 'Queuing…' : `↺ Run Failed (${flows.filter(f => f.runs[0]?.status === 'failed').length})`}
+            </button>
+          )}
           {anyRunning && (
             <button onClick={handleStopAll} disabled={stoppingAll} className="btn btn-warning btn-sm">
               {stoppingAll ? '…' : '⏹ Stop All'}
@@ -589,13 +633,52 @@ export default function ProjectDetailPage() {
           {flows.length > 0 && (
             <button onClick={handleExportCSV} className="btn btn-ghost btn-sm">⬇ Export CSV</button>
           )}
-          <a href="/api/flows/template" download="flows-template.json" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none' }}>⬇ Template</a>
+          <a href="/api/flows/ai-guide" download="maiflow-ai-guide.md" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none' }}>⬇ AI Guide</a>
           {!recordingSessionId && !recordingScript && (
             <button onClick={handleStartRecording} className="btn btn-danger btn-sm">🔴 Record</button>
           )}
           <button onClick={() => setShowFlowForm(!showFlowForm)} className="btn btn-ghost btn-sm">+ Manual</button>
         </div>
       </div>
+
+      {/* Filter + Sort bar */}
+      {flows.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 3 }}>
+            {(['all', 'failed', 'passed', 'running', 'never'] as FlowFilter[]).map(f => {
+              const count =
+                f === 'all'     ? flows.length :
+                f === 'never'   ? flows.filter(x => x.runs.length === 0).length :
+                f === 'running' ? flows.filter(x => x.runs[0]?.status === 'running' || x.runs[0]?.status === 'pending').length :
+                flows.filter(x => x.runs[0]?.status === f).length;
+              const activeColor = f === 'failed' ? 'var(--error)' : f === 'passed' ? 'var(--success)' : f === 'running' ? 'var(--running)' : 'var(--accent)';
+              return (
+                <button key={f} onClick={() => setFilterStatus(f)} className="btn btn-xs btn-ghost" style={{
+                  borderColor: filterStatus === f ? (f === 'all' ? 'var(--border-hover)' : activeColor) : 'transparent',
+                  color: filterStatus === f ? (f === 'all' ? 'var(--text)' : activeColor) : 'var(--text-muted)',
+                  background: filterStatus === f ? 'rgba(255,255,255,0.04)' : 'transparent',
+                  textTransform: 'capitalize',
+                }}>
+                  {f === 'never' ? 'Never Run' : f} {count > 0 && <span style={{ opacity: 0.6, fontSize: 10 }}>({count})</span>}
+                </button>
+              );
+            })}
+          </div>
+          <select
+            value={sortBy}
+            onChange={e => setSortBy(e.target.value as FlowSort)}
+            style={{
+              background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6,
+              color: 'var(--text-muted)', fontSize: 11, padding: '3px 8px', cursor: 'pointer',
+            }}
+          >
+            <option value="default">Sort: Default</option>
+            <option value="failed_first">Sort: Failed First</option>
+            <option value="pass_rate_asc">Sort: Pass Rate ↑</option>
+            <option value="alpha">Sort: A → Z</option>
+          </select>
+        </div>
+      )}
 
       {/* Flow list */}
       {flows.length === 0 ? (
@@ -606,7 +689,11 @@ export default function ProjectDetailPage() {
         </div>
       ) : (
         <div className="stagger" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {flows.map(flow => {
+          {filteredFlows.length === 0 ? (
+            <div className="card" style={{ padding: '36px 24px', textAlign: 'center' }}>
+              <div style={{ fontSize: 13, color: 'var(--text-subtle)' }}>No flows match this filter.</div>
+            </div>
+          ) : filteredFlows.map(flow => {
             const latestRun = flow.runs[0];
             const isActive  = latestRun?.status === 'running' || latestRun?.status === 'pending';
             const rate      = passRate(flow.runs);

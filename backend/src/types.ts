@@ -7,7 +7,9 @@ export type StepAction =
   | { action: 'assert_url'; contains: string }
   | { action: 'assert_element'; selector: string }
   | { action: 'assert_text'; selector: string; contains: string }
-  | { action: 'screenshot'; name: string };
+  | { action: 'screenshot'; name: string }
+  | { action: 'upload_file'; selector: string; url: string; filename?: string }
+  | { action: 'extract'; selector: string; varName: string; attribute?: string };
 
 export interface Project {
   id: number;
