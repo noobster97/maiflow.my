@@ -72,6 +72,10 @@ Self-hosted E2E browser automation testing platform. Define test flows, run them
 - `flows-maigambar.json` rewrite: 44 flows, correct assertion texts, wait steps after navigates
 - Settings: removed duplicate "Clear Run Data" (moved to toolbar as "🧹 Clear History")
 
+### Session 10 — 2026-03-13
+- ai-flow-guide.md: corrected credential policy — hardcode test credentials directly in flow JSON, not in maiflow.my env_vars. env_vars are optional, only useful for environment-switching (e.g. BASE_URL staging vs prod). Guide is instruction-only, no credential policy imposed on projects.
+- flows-maigambar-crud.json: replaced `{{STRIPE_TEST_EMAIL}}` / `{{STRIPE_TEST_PASSWORD}}` with hardcoded values directly in flow JSON.
+
 ### Session 9 — 2026-03-13
 - `wait_for_url` step action: polls `page.url()` every 1s until URL contains match or timeout (default 120s). For manual Stripe payment flows — resumes immediately when Stripe redirects back to app. 300s timeout for payment flows.
 - `ai-flow-guide.md` full rewrite: project-agnostic precision ruleset for AI agents generating flow JSON for any project. Covers 2 failure types, 6-step research protocol, assertion ranking (assert_url > assert_element > scoped assert_text > body last resort), SPA timing rules, 5 selector pitfalls, idempotency rules, 14-point validation checklist. Section 7 is now a general template with maigambar.my as a clearly labeled example subsection.
