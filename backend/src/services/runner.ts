@@ -356,12 +356,24 @@ export async function runFlow(flowId: number, runId: number, isRetry = false): P
       const stepDesc = describeStep(steps[i], i, steps.length);
       db.prepare(`UPDATE runs SET current_step = ? WHERE id = ?`).run(stepDesc, runId);
       await executeStep(page, steps[i], runId, i, baseUrl, envVars);
-      try {
-        await page.screenshot({ path: livePath, fullPage: false });
-        db.prepare(`UPDATE runs SET live_screenshot = ? WHERE id = ?`).run(liveFile, runId);
-      } catch {}
-      // Small pause so live view is visible between steps
-      try { await page.waitForTimeout(400); } catch {}
+
+      // Auto-screenshot after every step (skip wait — page doesn't change)
+      // Saves individually labelled screenshot per step so run detail shows full step trace
+      const skipScreenshot = steps[i].action === 'wait';
+      if (!skipScreenshot) {
+        try {
+          const stepFile = `run_${runId}_step_${String(i + 1).padStart(2, '0')}.png`;
+          const stepPath = path.join(SCREENSHOTS_DIR, stepFile);
+          await page.screenshot({ path: stepPath, fullPage: false });
+          db.prepare(`INSERT INTO screenshots (run_id, filename, label) VALUES (?, ?, ?)`).run(runId, stepFile, stepDesc);
+          // Copy to live view so dashboard shows current state
+          fs.copyFileSync(stepPath, livePath);
+          db.prepare(`UPDATE runs SET live_screenshot = ? WHERE id = ?`).run(liveFile, runId);
+        } catch {}
+      }
+
+      // Pause between steps — long enough to observe live view and let page settle
+      try { await page.waitForTimeout(1000); } catch {}
     }
 
     if (cancelled) return;

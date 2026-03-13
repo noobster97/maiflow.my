@@ -297,7 +297,69 @@ Use `{{STRIPE_TEST_EMAIL}}` + `{{STRIPE_TEST_PASSWORD}}` env vars. Change email 
 
 ---
 
-## SECTION 8 — Validation Checklist Before Outputting Flows
+## SECTION 8 — Step Detail Rules: What Every Flow Must Show
+
+maiflow.my **auto-captures a screenshot after every step** (except `wait`). Each screenshot is stored and labelled with the step description. This means your flows produce a full visual trace of what happened — but only if your flows are detailed enough to make that trace meaningful.
+
+### Rules for detailed flows
+
+**1. Assert immediately after every navigation**
+Every `navigate` must be followed by an `assert_url` before any other step. This confirms you landed on the right page before asserting form fields.
+```json
+{ "action": "navigate", "url": "/dashboard/packages/create" },
+{ "action": "wait", "ms": 5000 },
+{ "action": "assert_url", "contains": "/packages/create" },
+{ "action": "assert_element", "selector": "[name='name']" }
+```
+
+**2. Screenshot after every meaningful state change**
+Add a named `screenshot` step after: login, form submit, modal open, file upload, any redirect. The runner auto-captures too, but explicit screenshots with meaningful names (`"after-login"`, `"form-submitted"`, `"error-shown"`) make the run trace readable.
+```json
+{ "action": "click", "selector": "[type='submit']" },
+{ "action": "wait", "ms": 2000 },
+{ "action": "screenshot", "name": "after-login" },
+{ "action": "assert_url", "contains": "/dashboard" }
+```
+
+**3. Assert the result of every action**
+Every click/submit/navigate should be followed by an assertion that confirms the expected result. Never click a button without asserting what happened next.
+```json
+// BAD — clicks but never checks if it worked
+{ "action": "click", "selector": "button:has-text('Save Package')" },
+{ "action": "wait", "ms": 2000 }
+
+// GOOD — clicks and immediately verifies the result
+{ "action": "click", "selector": "button:has-text('Save Package')" },
+{ "action": "wait", "ms": 2000 },
+{ "action": "screenshot", "name": "after-save-package" },
+{ "action": "assert_url", "contains": "/dashboard/packages" },
+{ "action": "assert_text", "selector": "body", "contains": "Package saved" }
+```
+
+**4. Assert the page heading at the start of every flow section**
+After navigating to a page, assert the page heading so the trace shows where you are:
+```json
+{ "action": "assert_text", "selector": "h1", "contains": "Create New Package" }
+```
+
+**5. Add a final screenshot at the end of every flow**
+Always end your flow with a `screenshot` named `"final-state"`. This is the proof that the flow completed successfully.
+```json
+{ "action": "screenshot", "name": "final-state" }
+```
+
+**6. What the trace will show**
+When your flows follow these rules, the run detail page in maiflow.my shows:
+- After every navigate: screenshot of the page you landed on
+- After every fill/click: screenshot of the page state
+- After every assertion: screenshot confirming what was on screen
+- Named screenshots at key milestones with readable labels
+
+This means failures show exactly which step broke and what the page looked like when it broke — no guessing.
+
+---
+
+## SECTION 9 — Validation Checklist Before Outputting Flows
 
 Run through this before finalizing any flow JSON output:
 
@@ -308,7 +370,10 @@ Run through this before finalizing any flow JSON output:
 - [ ] File upload flows use `upload_file` action, not `click` on the file input
 - [ ] All forms with a `description` field use `textarea[name='description']` not `[name='description']`
 - [ ] Each flow starts with a full login sequence (no assumed session state from previous flows)
-- [ ] Wait times: 3000ms for create/edit form pages, 2000ms for list/view/static pages, 1000ms for tab clicks
+- [ ] Wait times: **5000ms** for create/edit form pages (React render), 2000ms for list/view/static pages, 1000ms for tab clicks
+- [ ] `assert_url` placed immediately after every `navigate` + wait block
+- [ ] `screenshot` added after every login, form submit, modal open, redirect
+- [ ] Final `screenshot` named `"final-state"` at the end of every flow
 - [ ] All Stripe/payment tests are idempotent (no completed payments — use Cancel)
 - [ ] No dynamic values asserted (no timestamps, IDs, auto-generated codes)
 - [ ] Account used in each flow matches the feature being tested (right plan tier)
@@ -574,6 +639,7 @@ These three flows demonstrate all best practices: verified selectors, correct wa
 4. Generate flows grouped by feature area
 5. Include both happy path and error/edge cases where appropriate
 6. Use the Account Reference Table (Section 7) to select the right test account per flow
-7. Run the Validation Checklist (Section 8) before outputting
+7. Apply Section 8 Step Detail Rules — assert after every action, screenshot at every milestone, final screenshot at end
+8. Run the Validation Checklist (Section 9) before outputting
 8. Output a single valid JSON array — no comments, no trailing commas
 9. Tell the user: "Import this file into your maiflow.my project using the Import JSON button"
