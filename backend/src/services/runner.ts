@@ -352,6 +352,7 @@ export async function runFlow(flowId: number, runId: number, isRetry = false): P
     const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const page = await context.newPage();
     page.on('pageerror', () => {});
+    page.on('dialog', d => d.accept());
 
     // Auto-timeout — uses effectiveTimeout (auto-extended for wait_for_url steps)
     timeoutHandle = setTimeout(() => {
