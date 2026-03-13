@@ -316,14 +316,24 @@ export async function runFlow(flowId: number, runId: number, isRetry = false): P
   const project = db.prepare('SELECT base_url, headless, timeout_ms, webhook_url, env_vars FROM projects WHERE id = ?').get(flow.project_id) as any;
   const baseUrl: string = project?.base_url || '';
   const isHeadless: boolean = !!project?.headless;
-  const timeoutMs: number = project?.timeout_ms || 60000;
+  const timeoutMs: number = project?.timeout_ms || 300000; // default 5 min
   const webhookUrl: string | null = project?.webhook_url || null;
   const envVars: Record<string, string> = (() => { try { return JSON.parse(project?.env_vars || '{}'); } catch { return {}; } })();
+
+  // Auto-extend timeout if any step has wait_for_url with a longer timeout
+  let effectiveTimeout = timeoutMs;
+  for (const step of steps) {
+    if (step.action === 'wait_for_url' && step.timeout) {
+      effectiveTimeout = Math.max(effectiveTimeout, step.timeout + 60000);
+    }
+  }
+
   db.prepare(`UPDATE runs SET status = 'running', started_at = CURRENT_TIMESTAMP WHERE id = ?`).run(runId);
 
   const startTime = Date.now();
   let browser: Browser | null = null;
   let cancelled = false;
+  let timedOut = false;
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
   activeRuns.set(runId, {
@@ -343,10 +353,11 @@ export async function runFlow(flowId: number, runId: number, isRetry = false): P
     const page = await context.newPage();
     page.on('pageerror', () => {});
 
-    // Auto-timeout
+    // Auto-timeout — uses effectiveTimeout (auto-extended for wait_for_url steps)
     timeoutHandle = setTimeout(() => {
+      timedOut = true;
       if (browser) browser.close().catch(() => {});
-    }, timeoutMs);
+    }, effectiveTimeout);
 
     const liveFile = `live_${runId}.png`;
     const livePath = path.join(SCREENSHOTS_DIR, liveFile);
@@ -400,8 +411,11 @@ export async function runFlow(flowId: number, runId: number, isRetry = false): P
         }
       }
     } catch {}
+    const errorMsg = timedOut
+      ? `Flow timed out after ${Math.round(effectiveTimeout / 1000)}s. If your flow has manual steps (wait_for_url), increase the project timeout in Settings.`
+      : (err.message || 'Unknown error');
     db.prepare(`UPDATE runs SET status = 'failed', error_message = ?, duration_ms = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`)
-      .run(err.message || 'Unknown error', duration, runId);
+      .run(errorMsg, duration, runId);
     if (webhookUrl) {
       callWebhook(webhookUrl, { run_id: runId, flow_id: flowId, status: 'failed', error: err.message, timestamp: new Date().toISOString() });
     }
